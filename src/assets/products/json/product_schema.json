@@ -1,0 +1,361 @@
+{
+    "_id": "5f8d8a7b2f4a1e3d6c9b4a2a",
+    "metadata": {
+      "version": "1.0",
+      "createdAt": "2023-11-20T10:00:00Z",
+      "lastUpdated": "2023-11-20T10:00:00Z",
+      "sourceSystem": "ERP-123"
+    },
+    "identification": {
+      "productCategory": {
+        "primary": "Eletrônicos",
+        "secondary": "Dispositivos IoT",
+        "tertiary": "Sensores Ambientais"
+      },
+      "brandName": "EcoTech",
+      "modelName": "EnvSensor-X2000",
+      "sku": "ET-ES-X2000-BLK",
+      "upc": "123456789012",
+      "serialNumberPattern": "ESX2###-YYWW",
+      "isActive": true
+    },
+    "technicalSpecifications": {
+      "operatingVoltage": {
+        "min": 3.3,
+        "max": 5.0,
+        "unit": "V"
+      },
+      "operatingTemperature": {
+        "min": -20,
+        "max": 60,
+        "unit": "°C"
+      },
+      "powerConsumption": {
+        "standby": 0.5,
+        "active": 2.1,
+        "unit": "W"
+      },
+      "dimensions": {
+        "length": 50,
+        "width": 30,
+        "height": 10,
+        "unit": "mm"
+      },
+      "weight": {
+        "value": 120,
+        "unit": "g"
+      },
+      "ipRating": "IP67",
+      "compliance": ["CE", "FCC", "RoHS"],
+      "additionalSpecs": {
+        "sensorType": "Multiespectral",
+        "accuracy": "±2%",
+        "calibrationInterval": 365
+      }
+    },
+    "materialComposition": {
+      "billOfMaterials": [
+        {
+          "materialId": "MAT-ABS-001",
+          "name": "ABS Plastic",
+          "percentage": 45.2,
+          "weight": {
+            "value": 54.24,
+            "unit": "g"
+          },
+          "classification": {
+            "isRecycled": true,
+            "recycledPercentage": 30,
+            "isHazardous": false,
+            "hazardType": null
+          },
+          "origin": {
+            "country": "DE",
+            "supplierId": "SUP-12345",
+            "sourcingType": "virgin"
+          }
+        },
+        {
+          "materialId": "MAT-PCB-002",
+          "name": "Printed Circuit Board",
+          "percentage": 22.6,
+          "weight": {
+            "value": 27.12,
+            "unit": "g"
+          },
+          "classification": {
+            "isRecycled": false,
+            "recycledPercentage": 0,
+            "isHazardous": true,
+            "hazardType": "lead-containing"
+          },
+          "origin": {
+            "country": "TW",
+            "supplierId": "SUP-67890",
+            "sourcingType": "virgin"
+          }
+        }
+      ],
+      "totalWeight": {
+        "value": 120,
+        "unit": "g"
+      },
+      "recycledContentPercentage": 13.56,
+      "hazardousMaterialsPresent": true
+    },
+    "documentation": {
+      "instructionManual": {
+        "url": "https://docs.ecotech.com/envsensor-x2000/manual",
+        "version": "2.1",
+        "languages": ["en", "es", "pt", "de"],
+        "lastUpdated": "2023-05-15T00:00:00Z"
+      },
+      "warranty": {
+        "durationMonths": 24,
+        "type": "limited",
+        "termsUrl": "https://docs.ecotech.com/envsensor-x2000/warranty",
+        "coverage": ["parts", "labor"],
+        "exclusions": ["water damage", "unauthorized repair"]
+      },
+      "maintenanceInstructions": {
+        "routineIntervalDays": 90,
+        "procedures": [
+          {
+            "type": "calibration",
+            "frequency": "annual",
+            "instructionsUrl": "https://docs.ecotech.com/envsensor-x2000/calibration"
+          },
+          {
+            "type": "cleaning",
+            "frequency": "quarterly",
+            "instructionsUrl": "https://docs.ecotech.com/envsensor-x2000/cleaning"
+          }
+        ]
+      },
+      "repairInfo": {
+        "serviceCenters": [
+          {
+            "id": "SC-001",
+            "name": "EcoTech Authorized Service Center - Berlin",
+            "location": {
+              "address": "123 Tech Str., Berlin, Germany",
+              "coordinates": {
+                "lat": 52.520008,
+                "lon": 13.404954
+              }
+            },
+            "contact": {
+              "phone": "+49 30 1234567",
+              "email": "service.berlin@ecotech.com"
+            },
+            "isCertified": true
+          }
+        ],
+        "troubleshootingGuides": [
+          {
+            "issue": "sensor not responding",
+            "solutionUrl": "https://support.ecotech.com/kb/x2000/001"
+          }
+        ],
+        "diagnosticCodes": {
+          "error001": "Power supply issue",
+          "error002": "Sensor calibration needed"
+        }
+      }
+    },
+    "productionData": {
+      "manufacturingLocations": [
+        {
+          "facilityId": "FAC-001",
+          "name": "EcoTech Manufacturing Plant - Shenzhen",
+          "location": {
+            "address": "456 Industrial Park, Shenzhen, China",
+            "coordinates": {
+              "lat": 22.543096,
+              "lon": 114.057865
+            }
+          },
+          "certifications": ["ISO 9001", "ISO 14001"]
+        }
+      ],
+      "productionDates": {
+        "start": "2023-01-15T00:00:00Z",
+        "end": "2023-01-20T00:00:00Z"
+      },
+      "batchNumber": "B230115-42",
+      "productionReportUrl": "https://reports.ecotech.com/production/B230115-42",
+      "qualityControl": {
+        "testsPerformed": 5,
+        "defectRate": 0.002,
+        "qcReportUrl": "https://reports.ecotech.com/qc/B230115-42"
+      },
+      "energyConsumption": {
+        "value": 2.4,
+        "unit": "kWh",
+        "perUnit": true
+      }
+    },
+    "endOfLifeManagement": {
+      "recycling": {
+        "isRecyclable": true,
+        "recyclabilityPercentage": 78.5,
+        "recyclingInstructionsUrl": "https://ecotech.com/recycle/x2000",
+        "materialRecovery": [
+          {
+            "materialId": "MAT-ABS-001",
+            "recoveryProcess": "mechanical",
+            "recoveryRate": 85
+          }
+        ]
+      },
+      "disassembly": {
+        "timeRequiredMinutes": 15,
+        "toolRequirements": ["Torx T5", "plastic spudger"],
+        "instructionsUrl": "https://ecotech.com/disassemble/x2000",
+        "difficultyRating": 3
+      },
+      "disposal": {
+        "hazardousComponentsPresent": true,
+        "disposalInstructions": "Do not dispose in regular waste. Return to authorized collection point.",
+        "takeBackProgram": {
+          "isAvailable": true,
+          "programUrl": "https://ecotech.com/takeback"
+        }
+      },
+      "reusePotential": {
+        "componentsReusable": ["housing", "connectors"],
+        "refurbishmentPotential": true
+      }
+    },
+    "sustainabilityMetrics": {
+      "environmentalFootprint": {
+        "carbonFootprint": {
+          "manufacturing": 2.1,
+          "transport": 0.3,
+          "usePhase": 5.6,
+          "endOfLife": -0.8,
+          "unit": "kg CO2e"
+        },
+        "waterUsage": {
+          "value": 15,
+          "unit": "liters"
+        }
+      },
+      "energyEfficiency": {
+        "energyStarRating": 4.5,
+        "standbyPower": 0.5,
+        "unit": "W"
+      },
+      "certifications": [
+        {
+          "type": "EPEAT",
+          "level": "Gold",
+          "certificationId": "EPEAT-123456",
+          "validUntil": "2025-12-31T00:00:00Z"
+        },
+        {
+          "type": "EnergyStar",
+          "version": "3.0",
+          "certificationId": "ES-789012",
+          "validUntil": "2024-06-30T00:00:00Z"
+        }
+      ],
+      "lifeCycleAssessment": {
+        "reportUrl": "https://reports.ecotech.com/lca/x2000",
+        "conductedBy": "GreenMetrics Inc.",
+        "date": "2022-11-15T00:00:00Z"
+      }
+    },
+    "operationalData": {
+      "usageStatistics": {
+        "averageDailyUsageHours": 18.5,
+        "commonUsagePatterns": ["continuous monitoring", "periodic sampling"],
+        "failureRate": 0.0005,
+        "mtbf": 50000
+      },
+      "ownershipHistory": [
+        {
+          "ownerId": "CUST-001",
+          "ownerType": "consumer",
+          "startDate": "2023-02-10T00:00:00Z",
+          "endDate": "2023-08-15T00:00:00Z",
+          "transferReason": "upgrade",
+          "location": {
+            "country": "US",
+            "region": "CA"
+          }
+        },
+        {
+          "ownerId": "CUST-002",
+          "ownerType": "business",
+          "startDate": "2023-08-16T00:00:00Z",
+          "endDate": null,
+          "location": {
+            "country": "DE",
+            "city": "Berlin"
+          }
+        }
+      ],
+      "maintenanceRecords": [
+        {
+          "recordId": "MNT-001",
+          "date": "2023-05-20T00:00:00Z",
+          "type": "preventive",
+          "description": "Routine calibration",
+          "performedBy": "CUST-002",
+          "serviceCenterId": null,
+          "nextRecommendedDate": "2023-11-20T00:00:00Z",
+          "cost": {
+            "value": 0,
+            "currency": "EUR",
+            "isCoveredByWarranty": true
+          }
+        },
+        {
+          "recordId": "MNT-002",
+          "date": "2023-09-10T00:00:00Z",
+          "type": "corrective",
+          "description": "Replaced faulty temperature sensor",
+          "performedBy": "authorized-service",
+          "serviceCenterId": "SC-001",
+          "nextRecommendedDate": null,
+          "cost": {
+            "value": 85.5,
+            "currency": "EUR",
+            "isCoveredByWarranty": false
+          },
+          "partsReplaced": [
+            {
+              "componentId": "COMP-TS-001",
+              "name": "Temperature Sensor Module",
+              "serialNumber": "TSM-2309-001"
+            }
+          ]
+        }
+      ],
+      "repairHistory": [
+        {
+          "repairId": "REP-001",
+          "date": "2023-09-10T00:00:00Z",
+          "issue": "Inaccurate temperature readings",
+          "diagnosis": "Faulty temperature sensor",
+          "resolution": "Sensor replacement",
+          "downtimeHours": 48,
+          "technicianNotes": "Sensor showed consistent 2.5°C deviation across range"
+        }
+      ],
+      "performanceData": {
+        "sensorReadings": {
+          "temperature": {
+            "average": 22.4,
+            "max": 42.1,
+            "min": 18.3,
+            "unit": "°C"
+          },
+          "uptimePercentage": 99.87
+        }
+      }
+    },
+    "extensions": {}
+  }
+  
