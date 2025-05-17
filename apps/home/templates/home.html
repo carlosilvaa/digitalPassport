@@ -1,0 +1,424 @@
+{% extends layout_path %}
+
+{% load static %}
+{% load i18n %}
+
+{% block title %}Conveyor Digital Passport{% endblock %}
+
+{% block vendor_css %}
+{{ block.super }}
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+{% endblock vendor_css %}
+
+{% block page_css %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'home/css/home.css' %}">
+{% endblock page_css %}
+
+{% block vendor_js %}
+{{ block.super }}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/loaders/GLTFLoader.js"></script>
+{% endblock vendor_js %}
+
+{% block page_js %}
+{{ block.super }}
+<script src="{% static 'home/js/conveyor-passport.js' %}"></script>
+{% endblock page_js %}
+
+{% block content %}
+<div class="container-fluid">
+  <div class="row g-3">
+    <!-- QR Code Section -->
+    <div class="col-12 col-md-3">
+      <div class="card h-100">
+        <div class="card-body text-center">
+          <div class="d-flex flex-column align-items-center gap-3">
+            <img src="{% static 'home/img/qr_conv3.png' %}" alt="QR Code" class="img-fluid" style="max-width: 200px;">
+            <img src="{% static 'home/img/Conv3_qrcode.jpg' %}" alt="QR Code" class="img-fluid" style="max-width: 200px;">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content Section -->
+    <div class="col-12 col-md-9">
+      <div class="card h-100">
+        <div class="card-header bg-light">
+          <h3 class="card-title mb-0 text-center">Conveyor Digital Passport</h3>
+        </div>
+        
+        <div class="card-body p-0">
+          <!-- Tabs Navigation -->
+          <div class="nav-wrapper position-relative px-3 pt-3">
+            <ul class="nav nav-tabs flex-nowrap overflow-auto py-2" role="tablist" style="scrollbar-width: thin;">
+              <li class="nav-item flex-shrink-0">
+                <button type="button" class="nav-link active" role="tab" data-bs-toggle="tab" data-bs-target="#identification" aria-controls="identification" aria-selected="true">Identification</button>
+              </li>
+              <li class="nav-item flex-shrink-0">
+                <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#technicaldata" aria-controls="technicaldata" aria-selected="false">Technical Data</button>
+              </li>
+              <li class="nav-item flex-shrink-0">
+                <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#productiondata" aria-controls="productiondata" aria-selected="false">Production Data</button>
+              </li>
+              <li class="nav-item flex-shrink-0">
+                <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#videosystem" aria-controls="videosystem" aria-selected="false">Conveyor Operation</button>
+              </li>
+              <li class="nav-item flex-shrink-0">
+                <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#operationaldata" aria-controls="operationaldata" aria-selected="false">Operational Data</button>
+              </li>
+              <li class="nav-item flex-shrink-0">
+                <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#details" aria-controls="details" aria-selected="false">Other Information</button>
+              </li>
+            </ul>
+          </div>
+
+          <!-- Tab Content -->
+          <div class="tab-content p-3">
+            <!-- Identification Tab -->
+            <div class="tab-pane fade show active" id="identification" role="tabpanel">
+              <div class="card border-0 shadow-none mb-4">
+                <div class="card-body">
+                  <h5 class="card-title mb-4">Product Information</h5>
+                  <div class="table-responsive">
+                    <table class="table table-borderless mb-0">
+                      <tbody>
+                        <tr>
+                          <th width="30%">Pre-trial Identifier:</th>
+                          <td class="fw-medium">Caf60-1720/D+TWS139-0005</td>
+                        </tr>
+                        <tr>
+                          <th>Product Identifier:</th>
+                          <td class="fw-medium">CeDRI-1720704766312-0003</td>
+                        </tr>
+                        <tr>
+                          <th>Brand:</th>
+                          <td class="fw-medium">Instituto Politécnico de Bragança</td>
+                        </tr>
+                        <tr>
+                          <th>Model:</th>
+                          <td class="fw-medium">Conveyor Module</td>
+                        </tr>
+                        <tr>
+                          <th>Component of:</th>
+                          <td>
+                            <a href="https://victoriamelo.github.io/Modular_Conveyor_Transfer_System_DPP/" target="_blank" class="fw-medium">CeDRI-1720704766312-0005</a>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Technical Data Tab -->
+            <div class="tab-pane fade" id="technicaldata" role="tabpanel">
+              <div class="card border-0 shadow-none mb-4">
+                <div class="card-body">
+                  <h5 class="card-title mb-4">Product Description</h5>
+                  
+                  <div class="accordion" id="productDescriptionAccordion">
+                    <!-- Physical Part -->
+                    <div class="accordion-item mb-3">
+                      <h2 class="accordion-header" id="headingPhysicalPart">
+                        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#physicalPart" aria-expanded="true" aria-controls="physicalPart">
+                          Physical Part
+                        </button>
+                      </h2>
+                      <div id="physicalPart" class="accordion-collapse collapse show" aria-labelledby="headingPhysicalPart" data-bs-parent="#productDescriptionAccordion">
+                        <div class="accordion-body p-0">
+                          <div class="accordion" id="physicalPartAccordion">
+                            <!-- Motors -->
+                            <div class="accordion-item border-0">
+                              <h2 class="accordion-header" id="headingMotors">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#motors" aria-expanded="false" aria-controls="motors">
+                                  Motors
+                                </button>
+                              </h2>
+                              <div id="motors" class="accordion-collapse collapse" aria-labelledby="headingMotors" data-bs-parent="#physicalPartAccordion">
+                                <div class="accordion-body">
+                                  <ul class="list-unstyled mb-0">
+                                    <li><strong>DC Motor</strong></li>
+                                    <ul class="mb-2">
+                                      <li><strong>Brand:</strong> Fischertechnik</li>
+                                      <li><strong>Power Supply:</strong> 24 V</li>
+                                    </ul>
+                                  </ul>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <!-- Conveyor Belt -->
+                            <div class="accordion-item border-0">
+                              <h2 class="accordion-header" id="headingBelt">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#belt" aria-expanded="false" aria-controls="belt">
+                                  Conveyor Belt
+                                </button>
+                              </h2>
+                              <div id="belt" class="accordion-collapse collapse" aria-labelledby="headingBelt" data-bs-parent="#physicalPartAccordion">
+                                <div class="accordion-body">
+                                  <ul class="list-unstyled mb-0">
+                                    <li><strong>Conveyor Belt</strong></li>
+                                    <ul class="mb-2">
+                                      <li><strong>Brand:</strong> Fischertechnik</li>
+                                    </ul>
+                                  </ul>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <!-- Sensors -->
+                            <div class="accordion-item border-0">
+                              <h2 class="accordion-header" id="headingSensors">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#sensors" aria-expanded="false" aria-controls="sensors">
+                                  Sensors
+                                </button>
+                              </h2>
+                              <div id="sensors" class="accordion-collapse collapse" aria-labelledby="headingSensors" data-bs-parent="#physicalPartAccordion">
+                                <div class="accordion-body">
+                                  <ul class="list-unstyled mb-0">
+                                    <li><strong>Photoelectric Sensor</strong></li>
+                                    <ul class="mb-2">
+                                      <li><strong>Type:</strong> Phototransistor</li>
+                                      <li><strong>Role:</strong> Input Detection</li>
+                                      <li><strong>Brand:</strong> Fischertechnik</li>
+                                    </ul>
+                                    <li><strong>Current Sensor</strong></li>
+                                    <ul class="mb-2">
+                                      <li><strong>Specification:</strong> <a href="https://learn.adafruit.com/adafruit-ina219-current-sensor-breakout/overview" target="_blank">INA219 Current Sensor Breakout</a></li>
+                                    </ul>
+                                    <li><strong>Accelerometer Sensor</strong></li>
+                                    <ul class="mb-2">
+                                      <li><strong>Brand:</strong> Fischertechnik</li>
+                                    </ul>
+                                    <li><strong>Current sensor</strong></li>
+                                    <ul class="mb-2">
+                                      <li><strong>Specification:</strong> INA219 Current Sensor Breakout (<a href="https://learn.adafruit.com/adafruit-ina219-current-sensor-breakout/overview" target="_blank">Adafruit</a>)</li>
+                                    </ul>
+                                    <li><strong>Accelerometer sensor:</strong></li>
+                                    <ul class="mb-2">
+                                      <li><strong>Specification:</strong> ADXL345 (<a href="https://www.analog.com/media/en/technical-documentation/data-sheets/adxl345.pdf" target="_blank">Keyestudio</a>)</li>
+                                    </ul>
+                                  </ul>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <!-- Power Supply -->
+                            <div class="accordion-item border-0">
+                              <h2 class="accordion-header" id="headingPowerSupply">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#powerSupply" aria-expanded="false" aria-controls="powerSupply">
+                                  Power supply
+                                </button>
+                              </h2>
+                              <div id="powerSupply" class="accordion-collapse collapse" aria-labelledby="headingPowerSupply" data-bs-parent="#physicalPartAccordion">
+                                <div class="accordion-body">
+                                  <ul class="list-unstyled mb-0">
+                                    <li>Battery 12V</li>
+                                    <li>Power supply socket to enable direct power supply from the source (AC power supply)</li>
+                                  </ul>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <!-- PCB -->
+                            <div class="accordion-item border-0">
+                              <h2 class="accordion-header" id="headingPcb">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#pcb" aria-expanded="false" aria-controls="pcb">
+                                  Printed Circuit Board
+                                </button>
+                              </h2>
+                              <div id="pcb" class="accordion-collapse collapse" aria-labelledby="headingPcb" data-bs-parent="#physicalPartAccordion">
+                                <div class="accordion-body">
+                                  <p>The board is used to establish a connection between the controller and the components of the transportation system. The electronic components included are resistors, capacitors, transistors, a 0.95" OLED RGB LCD display, an on/off switch, a step-down converter (7-24V to USB 5V 3A for Raspberry Pi power supply), and a step-up converter for the conveyor components power supply.</p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <!-- Cyber Part -->
+                    <div class="accordion-item">
+                      <h2 class="accordion-header" id="headingCyberPart">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#cyberPart" aria-expanded="false" aria-controls="cyberPart">
+                          Cyber part
+                        </button>
+                      </h2>
+                      <div id="cyberPart" class="accordion-collapse collapse" aria-labelledby="headingCyberPart" data-bs-parent="#productDescriptionAccordion">
+                        <div class="accordion-body">
+                          <ul class="list-unstyled mb-0">
+                            <li>Controller: <a href="https://www.raspberrypi.com/products/raspberry-pi-3-model-b-plus/" target="_blank">Raspberry Pi 3 Model B+</a></li>
+                            <li>Control: Agent-based control</li>
+                            <li>Connectivity: Wi-Fi</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Production Data Tab -->
+            <div class="tab-pane fade" id="productiondata" role="tabpanel">
+              <div class="row g-3">
+                <div class="col-12 col-lg-6">
+                  <div class="card h-100 border-0 shadow-none">
+                    <div class="card-body">
+                      <h5 class="card-title mb-4">Manufacturing Information</h5>
+                      <div class="table-responsive">
+                        <table class="table table-borderless mb-0">
+                          <tbody>
+                            <tr>
+                              <th width="40%">Manufacturing Location:</th>
+                              <td>Instituto Politécnico de Bragança, 5300-253</td>
+                            </tr>
+                            <tr>
+                              <th>City:</th>
+                              <td>Bragança</td>
+                            </tr>
+                            <tr>
+                              <th>Country:</th>
+                              <td>Portugal</td>
+                            </tr>
+                            <tr>
+                              <th>Date:</th>
+                              <td>14-02-2019</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div class="col-12 col-lg-6">
+                  <div class="card h-100 border-0 shadow-none">
+                    <div class="card-body">
+                      <h5 class="card-title mb-3">Manufacturing Location</h5>
+                      <div id="map" style="height: 250px; border-radius: 6px;"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Conveyor Operation Tab -->
+            <div class="tab-pane fade" id="videosystem" role="tabpanel">
+              <div class="card border-0 shadow-none">
+                <div class="card-body">
+                  <h5 class="card-title mb-3">Conveyor Operation</h5>
+                  <p class="mb-3">The conveyor's functioning is presented in the following video</p>
+                  <div class="ratio ratio-16x9">
+                    <video controls class="rounded">
+                      <source src="{% static 'home/img/conv_video.mp4' %}" type="video/mp4">
+                      Your browser does not support the video tag.
+                    </video>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Operational Data Tab -->
+            <div class="tab-pane fade" id="operationaldata" role="tabpanel">
+              <div class="card border-0 shadow-none">
+                <div class="card-body">
+                  <h5 class="card-title mb-4">Operational Data</h5>
+                  <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                      <div class="table-responsive">
+                        <table class="table table-sm table-borderless mb-0">
+                          <tbody>
+                            <tr>
+                              <th width="60%">Number of conveyors in the sequence:</th>
+                              <td id="conveyorCount">No data being published at the moment.</td>
+                            </tr>
+                            <tr>
+                              <th>Position occupied in the sequence:</th>
+                              <td id="position_in_sequence">No data being published at the moment.</td>
+                            </tr>
+                            <tr>
+                              <th>Number of pieces transported:</th>
+                              <td id="number_of_pieces">No data being published at the moment.</td>
+                            </tr>
+                            <tr>
+                              <th>Time to transport the last piece:</th>
+                              <td id="last_piece_time">No data being published at the moment.</td>
+                            </tr>
+                            <tr>
+                              <th>Motor operating time in the last transport:</th>
+                              <td id="motor_operating_time">No data being published at the moment.</td>
+                            </tr>
+                            <tr>
+                              <th>Motor status:</th>
+                              <td id="motor_status">No data being published at the moment.</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <div class="table-responsive">
+                        <table class="table table-sm table-borderless mb-0">
+                          <tbody>
+                            <tr>
+                              <th width="60%">Input sensor status:</th>
+                              <td id="input_sensor_status">No data being published at the moment.</td>
+                            </tr>
+                            <tr>
+                              <th>Output sensor status:</th>
+                              <td id="output_sensor_status">No data being published at the moment.</td>
+                            </tr>
+                            <tr>
+                              <th>Vibration:</th>
+                              <td id="vibration">No data being published at the moment.</td>
+                            </tr>
+                            <tr>
+                              <th>Current:</th>
+                              <td id="current">No data being published at the moment.</td>
+                            </tr>
+                            <tr>
+                              <th>Battery level:</th>
+                              <td id="battery_level">No data being published at the moment.</td>
+                            </tr>
+                            <tr>
+                              <th>Last values update:</th>
+                              <td id="update_date">No data being published at the moment.</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Other Information Tab -->
+            <div class="tab-pane fade" id="details" role="tabpanel">
+              <div class="card border-0 shadow-none">
+                <div class="card-body text-center">
+                  <h5 class="card-title mb-3">Contact Information</h5>
+                  <p class="mb-4">More information about the Conveyor Digital Passport:</p>
+                  <p class="fw-medium mb-4">victoria@ipb.pt</p>
+                  <div class="d-flex flex-wrap justify-content-center gap-4">
+                    <img src="{% static 'home/img/cedri_blue-EN.png' %}" alt="Logo CEDRI" style="height:80px">
+                    <img src="{% static 'home/img/logo_ipb.png' %}" alt="Logo IPB" style="height:80px">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,50 @@
+
+  @media (max-width: 767.98px) {
+    .card-body {
+      padding: 1rem;
+    }
+    
+    .table-responsive {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    
+    .table th, .table td {
+      white-space: nowrap;
+    }
+  }
+  
+  .accordion-button:not(.collapsed) {
+    background-color: rgba(13, 110, 253, 0.05);
+    color: #0a58ca;
+    box-shadow: none;
+  }
+  
+  .accordion-button:focus {
+    box-shadow: none;
+    border-color: rgba(13, 110, 253, 0.25);
+  }
+  
+  .accordion-body {
+    padding: 1rem 1.25rem;
+  }
+  
+  .card-title {
+    color: #2c3e50;
+    font-weight: 600;
+  }
+  
+  .table th {
+    font-weight: 500;
+    color: #495057;
+  }
+  
+  .table-borderless th, 
+  .table-borderless td {
+    padding: 0.5rem 0;
+  }
+  
+  .table-borderless tr:not(:last-child) th,
+  .table-borderless tr:not(:last-child) td {
+    border-bottom: 1px solid #f1f1f1;
+  }
