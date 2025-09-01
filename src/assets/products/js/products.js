@@ -13,9 +13,8 @@ function fetchProducts(callback) {
       Accept: 'application/json'
     },
     success: function (response) {
-      console.log("🚀 ~ fetchProducts ~ response:", response)
+      console.log('🚀 ~ fetchProducts ~ response:', response);
       if (response.success) {
-        
         if (callback) callback(response.data);
       } else {
         showBootstrapAlert('danger', 'Erro', response.error || 'Erro ao carregar produtos');
@@ -145,9 +144,11 @@ function cardHtml(product) {
   const brand = product.identification?.brandName || '---';
   const model = product.identification?.modelName || '---';
   const active = product.identification?.isActive === false ? false : true;
-  const image = product.imageUrl || 'https://via.placeholder.com/600x400?text=Sem+Imagem';
+  const image =
+    product.imageUrl ||
+    'https://img.freepik.com/premium-vector/default-image-icon-vector-missing-picture-page-website-design-mobile-app-no-photo-available_87543-11093.jpg?w=360';
   const desc = product.description || 'Sem descrição';
-  const category = product.identification?.productCategory?.primary || '---';
+  const category = product.identification?.productCategory?.primary || '';
 
   const statusClass = active ? 'bg-success' : 'bg-secondary';
 
@@ -185,7 +186,6 @@ function cardHtml(product) {
       </div>
     </div>`;
 }
-
 
 function fillForm(data) {
   // Identificação
@@ -241,41 +241,95 @@ function fillForm(data) {
 
   // Detalhes
   $('#description').val(data.description || '');
-  $('#stock').val(data.stock || 0);
-  $('#imageUrl').val(data.imageUrl || '');
 
-  // Novo bloco: DOCUMENTAÇÃO
+  // DOCUMENTAÇÃO
   $('#documentation_instructionManual_url').val(data.documentation?.instructionManual?.url || '');
   $('#documentation_instructionManual_version').val(data.documentation?.instructionManual?.version || '');
   $('#documentation_warranty_durationMonths').val(data.documentation?.warranty?.durationMonths || '');
   $('#documentation_warranty_termsUrl').val(data.documentation?.warranty?.termsUrl || '');
 
-  // SUSTENTABILIDADE — RECYCLING
+  // SUSTENTABILIDADE — RECYCLING (usar URL, não textarea de texto)
   $('#sustainability_recycling_isRecyclable').prop('checked', data.sustainability?.recycling?.isRecyclable || false);
-  $('#sustainability_recycling_recyclabilityPercentage').val(data.sustainability?.recycling?.recyclabilityPercentage || '');
-  $('#sustainability_recycling_recyclingInstructions').val(data.sustainability?.recycling?.recyclingInstructionsUrl || '');
+  $('#sustainability_recycling_recyclabilityPercentage').val(
+    data.sustainability?.recycling?.recyclabilityPercentage || ''
+  );
+  $('#sustainability_recycling_recyclingInstructionsUrl').val(
+    data.sustainability?.recycling?.recyclingInstructionsUrl || ''
+  );
 
-  // SUSTENTABILIDADE — DISASSEMBLY
+  // SUSTENTABILIDADE — DISASSEMBLY (usar URL com id ..._instructionsUrl)
   $('#sustainability_disassembly_timeRequiredMinutes').val(data.sustainability?.disassembly?.timeRequiredMinutes || '');
   $('#sustainability_disassembly_difficultyRating').val(data.sustainability?.disassembly?.difficultyRating || '');
-  $('#sustainability_disassembly_instructions').val(data.sustainability?.disassembly?.instructionsUrl || '');
-  $('#sustainability_disassembly_toolRequirements').val((data.sustainability?.disassembly?.toolRequirements || []).join(', '));
+  $('#sustainability_disassembly_instructionsUrl').val(data.sustainability?.disassembly?.instructionsUrl || '');
+  $('#sustainability_disassembly_toolRequirements').val(
+    (data.sustainability?.disassembly?.toolRequirements || []).join(', ')
+  );
 
   // SUSTENTABILIDADE — DISPOSAL
-  $('#sustainability_disposal_hazardousComponentsPresent').prop('checked', data.sustainability?.disposal?.hazardousComponentsPresent || false);
+  $('#sustainability_disposal_hazardousComponentsPresent').prop(
+    'checked',
+    data.sustainability?.disposal?.hazardousComponentsPresent || false
+  );
   $('#sustainability_disposal_disposalInstructions').val(data.sustainability?.disposal?.disposalInstructions || '');
-  $('#sustainability_disposal_takeBackProgram_isAvailable').prop('checked', data.sustainability?.disposal?.takeBackProgram?.isAvailable || false);
-  $('#sustainability_disposal_takeBackProgram_programUrl').val(data.sustainability?.disposal?.takeBackProgram?.programUrl || '');
+  $('#sustainability_disposal_takeBackProgram_isAvailable').prop(
+    'checked',
+    data.sustainability?.disposal?.takeBackProgram?.isAvailable || false
+  );
+  $('#sustainability_disposal_takeBackProgram_programUrl').val(
+    data.sustainability?.disposal?.takeBackProgram?.programUrl || ''
+  );
 
   // SUSTENTABILIDADE — REUSE
   $('#sustainability_reuse_componentsReusable').val((data.sustainability?.reuse?.componentsReusable || []).join(', '));
-  $('#sustainability_reuse_refurbishmentPotential').prop('checked', data.sustainability?.reuse?.refurbishmentPotential || false);
+  $('#sustainability_reuse_refurbishmentPotential').prop(
+    'checked',
+    data.sustainability?.reuse?.refurbishmentPotential || false
+  );
 
   // SUSTENTABILIDADE — PRODUCT LIFECYCLE
   $('#productLifecycle_estimatedLifetimeHours').val(data.productLifecycle?.estimatedLifetimeHours || '');
-  $('#productLifecycle_recommendedMaintenanceIntervalDays').val(data.productLifecycle?.recommendedMaintenanceIntervalDays || '');
+  $('#productLifecycle_recommendedMaintenanceIntervalDays').val(
+    data.productLifecycle?.recommendedMaintenanceIntervalDays || ''
+  );
   $('#productLifecycle_endOfLifeDate').val(data.productLifecycle?.endOfLifeDate || '');
 
+  if (data.imageUrl) {
+    $('#imageFileList').html(`
+      <div class="d-flex justify-content-between align-items-center bg-white p-2 rounded shadow-sm border">
+        <span><i class="bx bx-image me-2"></i> ${data.imageFileName || 'Imagem atual'}</span>
+        <div class="d-flex gap-2">
+          <a class="btn btn-sm btn-outline-secondary" href="${data.imageUrl}" target="_blank">Abrir</a>
+          <button type="button" class="btn btn-sm btn-outline-danger" id="removeIMG">
+            <i class="bx bx-x"></i>
+          </button>
+        </div>
+      </div>
+    `);
+    $('#removeIMG').off('click').on('click', function () {
+      $('#imageFile').val('');
+      $('#imageFileList').empty();
+      $('#removeImageFlag').val('true');
+    });
+  }
+
+  if (data.manualUrl) {
+    $('#fileList').html(`
+      <div class="d-flex justify-content-between align-items-center bg-white p-2 rounded shadow-sm border">
+        <span><i class="bx bx-file me-2"></i> ${data.manualFileName || 'Manual atual'}</span>
+        <div class="d-flex gap-2">
+          <a class="btn btn-sm btn-outline-secondary" href="${data.manualUrl}" target="_blank">Abrir</a>
+          <button type="button" class="btn btn-sm btn-outline-danger" id="removePDF">
+            <i class="bx bx-x"></i>
+          </button>
+        </div>
+      </div>
+    `);
+    $('#removePDF').off('click').on('click', function () {
+      $('#manualFile').val('');
+      $('#fileList').empty();
+      $('#removeManualFlag').val('true');
+    });
+  }
 }
 
 function validateForm() {
@@ -305,10 +359,12 @@ function openModal(id = null) {
     stepper.destroy();
   }
 
-  stepper = new Stepper($('#product-stepper')[0], {
-    linear: false,
-    animation: true
-  });
+  if (stepper) {
+    try {
+      stepper.destroy();
+    } catch (e) {}
+    stepper = null;
+  }
 
   const steps = [
     { id: 'step-1', title: 'Identificação', icon: 'bx bx-id-card' },
@@ -317,7 +373,6 @@ function openModal(id = null) {
     { id: 'step-4', title: 'Sustentabilidade', icon: 'bx bx-recycle' }
   ];
 
-  
   const $stepperHeader = $('#stepper-header').empty();
   steps.forEach((step, index) => {
     $stepperHeader.append(`
@@ -475,9 +530,16 @@ function openModal(id = null) {
           <input type="text" class="form-control form-control-sm" id="technicalSpecifications_ipRating">
         </div>
         <div class="col-md-6 m-0">
-          <div class="section-title mt-1"><i class="bx bx-certification me-1"></i> Normas de Conformidade</div>
-          <input type="text" class="form-control form-control-sm" id="technicalSpecifications_compliance" placeholder="Separadas por vírgula">
+          <div class="section-title mt-1">
+            <i class="bx bx-certification me-1"></i> Normas de Conformidade
+            <i class="bx bx-info-circle text-muted"
+              style="cursor:pointer"
+              data-bs-toggle="tooltip"
+              data-bs-placement="top"
+              title="Separe múltiplas normas por vírgulas. Ex.: “CE, RoHS, ISO 9001”"></i></div>
+          <input type="text" class="form-control form-control-sm" id="technicalSpecifications_compliance">
         </div>
+
         
         <div class="col-12 m-0"> 
           <div class="section-title mt-1"><i class="bx bx-chip me-1"></i> Especificações Adicionais</div>
@@ -509,11 +571,23 @@ function openModal(id = null) {
         </div>
         <div class="col-md-6">
           <label for="description" class="form-label">Descrição</label>
-          <textarea class="form-control form-control-sm" id="description" rows="2"></textarea>
+          <textarea class="form-control form-control-sm" id="description" rows="11"></textarea>
         </div>
+
         <div class="col-md-6">
-          <label for="imageUrl" class="form-label">URL da Imagem</label>
-          <input type="url" class="form-control form-control-sm" id="imageUrl">
+          <label class="form-label">Imagem do Produto (PNG/JPG/WEBP · até 5 MB)</label>
+          <div class="file-drop-area mb-4">
+            <div class="file-drop-area-content py-5 px-3 text-center border-2 rounded border-dashed" id="imgDropZone">
+              <i class="bx bx-cloud-upload display-4 text-muted"></i>
+              <h5 class="mb-1">Arraste e solte a imagem aqui</h5>
+              <p class="text-muted mb-2">ou</p>
+              <button type="button" class="btn btn-primary mb-3" id="browseImgBtn">
+                <i class="bx bx-search-alt"></i> Selecione a imagem
+              </button>
+              <input type="file" class="file-input" id="imageFile" accept=".png,.jpg,.jpeg,.webp" hidden>
+              <div class="file-list mt-3" id="imageFileList"></div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -594,9 +668,17 @@ function openModal(id = null) {
           </div>
         </div>
         <div class="col-md-12 m-0">
-          <label for="sustainability_reuse_componentsReusable" class="form-label">Componentes Reutilizáveis (vírgula)</label>
+          <label for="sustainability_reuse_componentsReusable" class="form-label d-inline-flex align-items-center gap-1">
+            <span>Componentes Reutilizáveis</span>
+            <i class="bx bx-info-circle text-muted"
+              style="cursor:pointer"
+              data-bs-toggle="tooltip"
+              data-bs-placement="top"
+              title="Separe os itens por vírgulas. Ex.: “sensor, tampa, cabo”"></i>
+          </label>
           <input type="text" class="form-control form-control-sm" id="sustainability_reuse_componentsReusable">
-        </div>        
+        </div>
+        
 
         <div class="col-12 m-0">
           <div class="section-title mt-1"><i class="bx bx-time-five me-1"></i> Vida Útil do Produto</div>
@@ -651,27 +733,40 @@ function openModal(id = null) {
     </div>
   `);
 
-  stepper = new Stepper($('#product-stepper')[0]);
+  const stepperEl = $('#product-stepper')[0];
+  if (stepper) {
+    try {
+      stepper.destroy();
+    } catch (e) {}
+  }
+  stepper = new Stepper(stepperEl, { linear: false, animation: true });
 
+  initFileUploadArea();
   updateStepperButtons();
 
-  $('#btnPrevStep').off('click').on('click', function() {
-    stepper.previous();
-    updateStepperButtons();
-  });
-
-  $('#btnNextStep').off('click').on('click', function() {
-    if (validateCurrentStep()) {
-      stepper.next();
+  $('#btnPrevStep')
+    .off('click')
+    .on('click', function () {
+      stepper.previous();
       updateStepperButtons();
-    }
-  });
+    });
 
-  $('#btnSubmitForm').off('click').on('click', function() {
-    if (validateCurrentStep()) {
-      saveProduct();
-    }
-  });
+  $('#btnNextStep').off('click')
+    .on('click', function () {
+      if (validateCurrentStep()) {
+        stepper.next();
+        updateStepperButtons();
+      }
+    });
+
+  // No submit, valide tudo e foque na aba certa
+  $('#btnSubmitForm')
+    .off('click')
+    .on('click', function () {
+      if (validateAllAndFocus()) {
+        saveProduct();
+      }
+    });
 
   if (id) {
     $('#productFormModalLabel').text('Editar Produto');
@@ -687,52 +782,133 @@ function openModal(id = null) {
     $('#productFormModalLabel').text('Novo Produto');
   }
 
+  $('#removeImageFlag, #removeManualFlag').remove();
+  $('#product-form').append('<input type="hidden" id="removeImageFlag" value="false">');
+  $('#product-form').append('<input type="hidden" id="removeManualFlag" value="false">');
+
+  var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+  tooltipTriggerList.forEach(function (el) {
+    new bootstrap.Tooltip(el);
+  });
+
+
   $('#product-modal').modal('show');
 }
 
 function updateStepperButtons() {
-  const currentStep = stepper._currentIndex;
+  if (!stepper || !Array.isArray(stepper._steps) || stepper._steps.length === 0) {
+    $('#btnPrevStep, #btnNextStep, #btnSubmitForm').hide();
+    return;
+  }
+
+  const currentStep = typeof stepper._currentIndex === 'number' ? stepper._currentIndex : 0;
   const totalSteps = stepper._steps.length - 1;
 
-  // Esconder/mostrar botões conforme a etapa
   $('#btnPrevStep').toggle(currentStep > 0);
   $('#btnNextStep').toggle(currentStep < totalSteps);
   $('#btnSubmitForm').toggle(currentStep === totalSteps);
 }
 
 function validateCurrentStep() {
-  let isValid = true;
-  const currentStepId = stepper._steps[stepper._currentIndex].id;
+  if (!stepper || !Array.isArray(stepper._steps) || stepper._steps.length === 0) {
+    return true;
+  }
 
+  let isValid = true;
+  const idx = typeof stepper._currentIndex === 'number' ? stepper._currentIndex : 0;
+  const currentStepId = stepper._steps[idx]?.id || 'step-1';
   $('.invalid-feedback').remove();
 
   if (currentStepId === 'step-1') {
-    if (!$('#identification_brandName').val().trim()) {
-      $('#identification_brandName').addClass('is-invalid');
-      $('#identification_brandName').after('<div class="invalid-feedback">Campo obrigatório</div>');
+    const $brand = $('#identification_brandName');
+    const $model = $('#identification_modelName');
+
+    if (!$brand.val().trim()) {
+      markInvalid($brand);
       isValid = false;
+    } else {
+      clearInvalid($brand);
     }
-    if (!$('#identification_modelName').val().trim()) {
-      $('#identification_modelName').addClass('is-invalid');
-      $('#identification_modelName').after('<div class="invalid-feedback">Campo obrigatório</div>');
+    if (!$model.val().trim()) {
+      markInvalid($model);
       isValid = false;
-    }
-  } else if (currentStepId === 'step-3') {
-    if (!$('#stock').val().trim()) {
-      $('#stock').addClass('is-invalid');
-      $('#stock').after('<div class="invalid-feedback">Campo obrigatório</div>');
-      isValid = false;
+    } else {
+      clearInvalid($model);
     }
   }
 
   if (!isValid) {
-    const alertMessage = currentStepId === 'step-3' 
-      ? 'Por favor, preencha o campo de estoque' 
-      : 'Por favor, preencha todos os campos obrigatórios';
-    showBootstrapAlert('danger', 'Erro', alertMessage);
+    showBootstrapAlert('danger', 'Erro', 'Por favor, preencha os campos obrigatórios.');
+  }
+  return isValid;
+}
+
+function markInvalid($el, msg = 'Campo obrigatório') {
+  if (!$el.length) {
+    return;
   }
 
-  return isValid;
+  $el.addClass('is-invalid');
+  if (!$el.next('.invalid-feedback').length) {
+    $el.after(`<div class="invalid-feedback">${msg}</div>`);
+  } else {
+    $el.next('.invalid-feedback').text(msg);
+  }
+}
+
+function clearInvalid($el) {
+  $el.removeClass('is-invalid');
+  $el.next('.invalid-feedback').remove();
+}
+
+function getStepIndexFromField($el) {
+  const content = $el.closest('.content');
+  if (!content.length) {
+    return 0;
+  }
+  const id = content.attr('id');
+  const index = parseInt(id.split('-')[1], 10) - 1;
+  return isNaN(index) ? 0 : index;
+}
+
+function validateAllAndFocus() {
+  let firstInvalid = null;
+  $('.invalid-feedback').remove();
+
+  ['#identification_brandName', '#identification_modelName'].forEach(sel => {
+    const $f = $(sel);
+    if (!$f.val().trim()) {
+      markInvalid($f);
+      if (!firstInvalid) firstInvalid = $f;
+    } else {
+      clearInvalid($f);
+    }
+  });
+
+  $('input[type="url"]').each(function () {
+    const $f = $(this);
+    const val = $f.val().trim();
+    if (!val) {
+      clearInvalid($f);
+      return;
+    }
+    try {
+      new URL(val);
+      clearInvalid($f);
+    } catch {
+      markInvalid($f, 'Introduza um URL válido.');
+      if (!firstInvalid) firstInvalid = $f;
+    }
+  });
+
+  if (firstInvalid) {
+    const goTo = getStepIndexFromField(firstInvalid);
+    if (typeof stepper?.to === 'function') stepper.to(goTo + 1);
+    setTimeout(() => firstInvalid.trigger('focus'), 150);
+    showBootstrapAlert('danger', 'Erro', 'Por favor, corrija os campos assinalados.');
+    return false;
+  }
+  return true;
 }
 
 function saveProduct() {
@@ -785,7 +961,10 @@ function saveProduct() {
         unit: $('#technicalSpecifications_weight_unit').val()
       },
       ipRating: $('#technicalSpecifications_ipRating').val(),
-      compliance: ($('#technicalSpecifications_compliance').val() || '').split(',').map(s => s.trim()).filter(Boolean),
+      compliance: ($('#technicalSpecifications_compliance').val() || '')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean),
       additionalSpecs: {
         sensorType: $('#technicalSpecifications_additionalSpecs_sensorType').val(),
         accuracy: $('#technicalSpecifications_additionalSpecs_accuracy').val(),
@@ -793,7 +972,6 @@ function saveProduct() {
       }
     },
     description: $('#description').val(),
-    imageUrl: $('#imageUrl').val(),
     documentation: {
       instructionManual: {
         url: $('#documentation_instructionManual_url').val(),
@@ -808,13 +986,16 @@ function saveProduct() {
       recycling: {
         isRecyclable: $('#sustainability_recycling_isRecyclable').is(':checked'),
         recyclabilityPercentage: parseFloat($('#sustainability_recycling_recyclabilityPercentage').val() || '0'),
-        recyclingInstructionsUrl: $('#sustainability_recycling_recyclingInstructions').val()
+        recyclingInstructionsUrl: $('#sustainability_recycling_recyclingInstructionsUrl').val()
       },
       disassembly: {
         timeRequiredMinutes: parseInt($('#sustainability_disassembly_timeRequiredMinutes').val() || '0'),
         difficultyRating: parseInt($('#sustainability_disassembly_difficultyRating').val() || '0'),
         instructionsUrl: $('#sustainability_disassembly_instructionsUrl').val(),
-        toolRequirements: ($('#sustainability_disassembly_toolRequirements').val() || '').split(',').map(s => s.trim()).filter(Boolean)
+        toolRequirements: ($('#sustainability_disassembly_toolRequirements').val() || '')
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean)
       },
       disposal: {
         hazardousComponentsPresent: $('#sustainability_disposal_hazardousComponentsPresent').is(':checked'),
@@ -825,23 +1006,37 @@ function saveProduct() {
         }
       },
       reuse: {
-        componentsReusable: ($('#sustainability_reuse_componentsReusable').val() || '').split(',').map(s => s.trim()).filter(Boolean),
+        componentsReusable: ($('#sustainability_reuse_componentsReusable').val() || '')
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean),
         refurbishmentPotential: $('#sustainability_reuse_refurbishmentPotential').is(':checked')
       }
     },
     productLifecycle: {
       estimatedLifetimeHours: parseInt($('#productLifecycle_estimatedLifetimeHours').val() || '0'),
-      recommendedMaintenanceIntervalDays: parseInt($('#productLifecycle_recommendedMaintenanceIntervalDays').val() || '0'),
+      recommendedMaintenanceIntervalDays: parseInt(
+        $('#productLifecycle_recommendedMaintenanceIntervalDays').val() || '0'
+      ),
       endOfLifeDate: $('#productLifecycle_endOfLifeDate').val()
     }
   };
 
-  // Adiciona o JSON principal como string
+  
+
   formData.append('json', JSON.stringify(payload));
+
+  formData.append('removeImage', $('#removeImageFlag').val());
+  formData.append('removeManual', $('#removeManualFlag').val());
 
   const manualFile = $('#manualFile')[0].files[0];
   if (manualFile) {
     formData.append('manualFile', manualFile);
+  }
+
+  const imageFile = $('#imageFile')[0].files[0];
+  if (imageFile) {
+    formData.append('imageFile', imageFile);
   }
 
   showLoader('#btnSaveProduct', 'Salvando...');
@@ -861,11 +1056,44 @@ function saveProduct() {
       loadProductsGrid();
     },
     error: function (xhr) {
-      const msg = xhr.responseJSON?.errors || 'Erro ao salvar';
-      showBootstrapAlert('danger', 'Erro', JSON.stringify(msg));
+      const errors = xhr.responseJSON?.errors || {};
+      let firstField = null;
+
+      function applyErr(selector, msg) {
+        const $f = $(selector);
+        if ($f.length) {
+          markInvalid($f, msg);
+          if (!firstField) firstField = $f;
+        }
+      }
+
+      if (errors.documentation?.instructionManual?.url?.length) {
+        applyErr('#documentation_instructionManual_url', errors.documentation.instructionManual.url[0]);
+      }
+      if (errors.sustainability?.recycling?.recyclingInstructionsUrl?.length) {
+        applyErr(
+          '#sustainability_recycling_recyclingInstructionsUrl',
+          errors.sustainability.recycling.recyclingInstructionsUrl[0]
+        );
+      }
+      if (errors.sustainability?.disassembly?.instructionsUrl?.length) {
+        applyErr('#sustainability_disassembly_instructionsUrl', errors.sustainability.disassembly.instructionsUrl[0]);
+      }
+      if (errors.documentation?.warranty?.termsUrl?.length) {
+        applyErr('#documentation_warranty_termsUrl', errors.documentation.warranty.termsUrl[0]);
+      }
+
+      if (firstField) {
+        const idx = getStepIndexFromField(firstField);
+        if (typeof stepper?.to === 'function') stepper.to(idx + 1);
+        setTimeout(() => firstField.trigger('focus'), 150);
+        showBootstrapAlert('danger', 'Erro', 'Por favor, corrija os campos assinalados.');
+      } else {
+        const msg = xhr.responseJSON?.detail || 'Erro ao salvar';
+        showBootstrapAlert('danger', 'Erro', msg);
+      }
     },
     complete: function () {
-      
       hideLoader('#btnSaveProduct');
     }
   });
@@ -929,75 +1157,156 @@ function initEvents() {
     }
   });
 
-  $(document).on('input', '#identification_brandName, #identification_modelName, #stock', function() {
+  $(document).on('input', '#identification_brandName, #identification_modelName, #stock', function () {
     if (this.value.trim()) {
       $(this).removeClass('is-invalid');
       $(this).next('.invalid-feedback').remove();
     }
   });
-
-  initFileUploadArea();
 }
 
 function initFileUploadArea() {
+  // PDF
   const $dropZone = $('#dropZone');
   const $fileInput = $('#manualFile');
   const $fileList = $('#fileList');
   const $browseBtn = $('#browseFileBtn');
 
-  function clearFiles() {
+  function clearPDF() {
     uploadedPDF = null;
     $fileInput.val('');
     $fileList.empty();
   }
-
-  function renderFile(file) {
+  function renderPDF(file) {
     $fileList.html(`
       <div class="d-flex justify-content-between align-items-center bg-white p-2 rounded shadow-sm border">
         <span><i class="bx bx-file me-2"></i> ${file.name}</span>
-        <button type="button" class="btn btn-sm btn-outline-danger" id="removePDF">
-          <i class="bx bx-x"></i>
-        </button>
+        <button type="button" class="btn btn-sm btn-outline-danger" id="removePDF"><i class="bx bx-x"></i></button>
       </div>
     `);
-    $('#removePDF').on('click', clearFiles);
+    $('#removePDF').off('click').on('click', clearPDF);
+  }
+  function validatePDF(file) {
+    if (file.type !== 'application/pdf') {
+      alert('Apenas PDF é permitido.');
+      return false;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      alert('O manual excede 10 MB.');
+      return false;
+    }
+    return true;
   }
 
-  $browseBtn.on('click', () => $fileInput.trigger('click'));
-
-  $fileInput.on('change', function () {
-    const file = this.files[0];
-    if (file && file.type === 'application/pdf') {
-      uploadedPDF = file;
-      renderFile(file);
+  $browseBtn.off('click').on('click', () => $fileInput.trigger('click'));
+  $fileInput.off('change').on('change', function () {
+    const f = this.files[0];
+    if (f && validatePDF(f)) {
+      uploadedPDF = f;
+      renderPDF(f);
     } else {
-      alert('Por favor, selecione um arquivo PDF válido.');
-      clearFiles();
+      clearPDF();
     }
   });
 
-  $dropZone.on('dragover', function (e) {
+  $dropZone.off('dragover').on('dragover', e => {
     e.preventDefault();
     $dropZone.addClass('bg-light border-primary');
   });
-
-  $dropZone.on('dragleave', function () {
-    $dropZone.removeClass('bg-light border-primary');
-  });
-
-  $dropZone.on('drop', function (e) {
+  $dropZone.off('dragleave').on('dragleave', () => $dropZone.removeClass('bg-light border-primary'));
+  $dropZone.off('drop').on('drop', function (e) {
     e.preventDefault();
     $dropZone.removeClass('bg-light border-primary');
-
-    const file = e.originalEvent.dataTransfer.files[0];
-    if (file && file.type === 'application/pdf') {
-      uploadedPDF = file;
-      renderFile(file);
-    } else {
-      alert('Por favor, solte apenas arquivos PDF.');
-      clearFiles();
-    }
+    const f = e.originalEvent.dataTransfer.files[0];
+    if (f && validatePDF(f)) {
+      $fileInput[0].files = e.originalEvent.dataTransfer.files;
+      uploadedPDF = f;
+      renderPDF(f);
+    } else clearPDF();
   });
+
+  // IMAGEM
+  const $imgDropZone = $('#imgDropZone');
+  const $imgInput = $('#imageFile');
+  const $imgFileList = $('#imageFileList');
+  const $browseImgBtn = $('#browseImgBtn');
+
+  function clearImg() {
+    $imgInput.val('');
+    $imgFileList.empty();
+  }
+  function renderImg(file) {
+    $imgFileList.html(`
+      <div class="d-flex justify-content-between align-items-center bg-white p-2 rounded shadow-sm border">
+        <span><i class="bx bx-image me-2"></i> ${file.name}</span>
+        <button type="button" class="btn btn-sm btn-outline-danger" id="removeIMG"><i class="bx bx-x"></i></button>
+      </div>
+    `);
+    $('#removeIMG').off('click').on('click', clearImg);
+  }
+  function validateImg(file) {
+    const ok = ['image/png', 'image/jpeg', 'image/webp'];
+    if (!ok.includes(file.type)) {
+      alert('Imagem inválida. Use PNG, JPG ou WEBP.');
+      return false;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert('A imagem excede 5 MB.');
+      return false;
+    }
+    return true;
+  }
+
+  $browseImgBtn.off('click').on('click', () => $imgInput.trigger('click'));
+  $imgInput.off('change').on('change', function () {
+    const f = this.files[0];
+    if (f && validateImg(f)) renderImg(f);
+    else clearImg();
+  });
+  $imgDropZone.off('dragover').on('dragover', e => {
+    e.preventDefault();
+    $imgDropZone.addClass('bg-light border-primary');
+  });
+  $imgDropZone.off('dragleave').on('dragleave', () => $imgDropZone.removeClass('bg-light border-primary'));
+  $imgDropZone.off('drop').on('drop', function (e) {
+    e.preventDefault();
+    $imgDropZone.removeClass('bg-light border-primary');
+    const f = e.originalEvent.dataTransfer.files[0];
+    if (f && validateImg(f)) {
+      $imgInput[0].files = e.originalEvent.dataTransfer.files;
+      renderImg(f);
+    } else clearImg();
+  });
+
+  // Validação inline de URLs
+  $(document)
+    .off('blur.url', 'input[type="url"]')
+    .on('blur.url', 'input[type="url"]', function () {
+      const val = this.value.trim();
+      if (!val) {
+        $(this).removeClass('is-invalid');
+        return;
+      }
+      try {
+        new URL(val);
+        $(this).removeClass('is-invalid');
+      } catch {
+        $(this).addClass('is-invalid');
+      }
+    })
+    .off('input.url change.url', 'input[type="url"]')
+    .on('input.url change.url', 'input[type="url"]', function () {
+      if ($(this).hasClass('is-invalid')) {
+        const val = this.value.trim();
+        if (!val) $(this).removeClass('is-invalid');
+        else {
+          try {
+            new URL(val);
+            $(this).removeClass('is-invalid');
+          } catch {}
+        }
+      }
+    });
 }
 
 $(document).ready(function () {

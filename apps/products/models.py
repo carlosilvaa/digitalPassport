@@ -108,6 +108,7 @@ class Products(DynamicDocument):
     sustainability = EmbeddedDocumentField(Sustainability, null=True)
     productLifecycle = EmbeddedDocumentField(ProductLifecycle, null=True)
     manualFile = FileField(null=True)
+    imageFile = FileField(null=True)
     description = StringField(null=True)
     imageUrl = URLField(null=True)
     createdAt = DateTimeField(default=datetime.utcnow)
