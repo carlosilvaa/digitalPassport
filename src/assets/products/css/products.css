@@ -76,4 +76,61 @@
         height: 160px;
     }
 }
+
+/* Adicione no seu arquivo products.css */
+.bs-stepper .step.active .bs-stepper-circle {
+  background-color: #7367f0;
+}
+
+.bs-stepper .step .bs-stepper-circle {
+  width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bs-stepper .line {
+  flex: 1;
+  height: 1px;
+  min-width: 1rem;
+  background-color: rgba(0,0,0,.1);
+  margin: auto;
+}
+
+/* Validação */
+.is-invalid {
+  border-color: #ea5455 !important;
+}
+
+.invalid-feedback {
+  color: #ea5455;
+  font-size: 0.857rem;
+}
+
+/* Estilos para os títulos das seções */
+.section-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #566a7f;
+  margin: 1.5rem 0 0.5rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #d9dee3;
+  position: relative;
+}
+
+.section-title::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 50px;
+  height: 2px;
+  background-color: #7367f0;
+}
+
+/* Espaçamento entre seções */
+.content > .row > .col-12:not(:first-child) {
+  margin-top: 1.5rem;
+}
   

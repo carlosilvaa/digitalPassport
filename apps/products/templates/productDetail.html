@@ -58,7 +58,7 @@
         <div class="card-body text-center">
           <div class="d-flex flex-column align-items-center gap-3">
             <img src="{{ product.imageUrl }}" alt="{{ product.brandName }} {{ product.modelName }}" class="img-fluid" style="max-width: 200px;">
-            <a href="{{ product.dppUrl }}" target="_blank" class="btn btn-primary">Acessar Passaporte Digital</a>
+            <a href="{{ product.dppUrl }}" target="_blank" class="btn btn-primary">COLOCAR UM QR CODE AQUI</a>
           </div>
         </div>
       </div>
@@ -143,15 +143,134 @@
             <div class="tab-pane fade" id="technicaldata" role="tabpanel">
               <div class="card border-0 shadow-none mb-4">
                 <div class="card-body">
-                  <h5 class="card-title mb-4">Product Features</h5>
-                  <ul class="list-group list-group-flush">
-                    {% for feature in product.features %}
-                    <li class="list-group-item">{{ feature }}</li>
-                    {% endfor %}
-                  </ul>
+                  <h5 class="card-title mb-4">Product Description</h5>
+
+                  <div class="accordion" id="productDescriptionAccordion">
+                    <!-- Physical Part -->
+                    <div class="accordion-item mb-3">
+                      <h2 class="accordion-header" id="headingPhysicalPart">
+                        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#physicalPart" aria-expanded="true" aria-controls="physicalPart">
+                          Physical Part
+                        </button>
+                      </h2>
+                      <div id="physicalPart" class="accordion-collapse collapse show" aria-labelledby="headingPhysicalPart" data-bs-parent="#productDescriptionAccordion">
+                        <div class="accordion-body p-0">
+                          <div class="accordion" id="physicalPartAccordion">
+                            <!-- Dimensions -->
+                            <div class="accordion-item border-0">
+                              <h2 class="accordion-header" id="headingDimensions">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#dimensions" aria-expanded="false" aria-controls="dimensions">
+                                  Dimensions
+                                </button>
+                              </h2>
+                              <div id="dimensions" class="accordion-collapse collapse" aria-labelledby="headingDimensions" data-bs-parent="#physicalPartAccordion">
+                                <div class="accordion-body">
+                                  <ul class="list-unstyled mb-0">
+                                    <li><strong>Length:</strong> {{ product.technicalSpecifications.dimensions.length }} {{ product.technicalSpecifications.dimensions.unit }}</li>
+                                    <li><strong>Width:</strong> {{ product.technicalSpecifications.dimensions.width }} {{ product.technicalSpecifications.dimensions.unit }}</li>
+                                    <li><strong>Height:</strong> {{ product.technicalSpecifications.dimensions.height }} {{ product.technicalSpecifications.dimensions.unit }}</li>
+                                    <li><strong>Weight:</strong> {{ product.technicalSpecifications.weight.value }} {{ product.technicalSpecifications.weight.unit }}</li>
+                                  </ul>
+                                </div>
+                              </div>
+                            </div>
+
+                            <!-- Power Supply -->
+                            <div class="accordion-item border-0">
+                              <h2 class="accordion-header" id="headingPower">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#powersupply" aria-expanded="false" aria-controls="powersupply">
+                                  Power Supply
+                                </button>
+                              </h2>
+                              <div id="powersupply" class="accordion-collapse collapse" aria-labelledby="headingPower" data-bs-parent="#physicalPartAccordion">
+                                <div class="accordion-body">
+                                  <ul class="list-unstyled mb-0">
+                                    <li><strong>Standby:</strong> {{ product.technicalSpecifications.powerConsumption.standby }} {{ product.technicalSpecifications.powerConsumption.unit }}</li>
+                                    <li><strong>Active:</strong> {{ product.technicalSpecifications.powerConsumption.active }} {{ product.technicalSpecifications.powerConsumption.unit }}</li>
+                                  </ul>
+                                </div>
+                              </div>
+                            </div>
+
+                            <!-- Operating Voltage -->
+                            <div class="accordion-item border-0">
+                              <h2 class="accordion-header" id="headingVoltage">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#voltage" aria-expanded="false" aria-controls="voltage">
+                                  Operating Voltage
+                                </button>
+                              </h2>
+                              <div id="voltage" class="accordion-collapse collapse" aria-labelledby="headingVoltage" data-bs-parent="#physicalPartAccordion">
+                                <div class="accordion-body">
+                                  <ul class="list-unstyled mb-0">
+                                    <li><strong>Min:</strong> {{ product.technicalSpecifications.operatingVoltage.min }} {{ product.technicalSpecifications.operatingVoltage.unit }}</li>
+                                    <li><strong>Max:</strong> {{ product.technicalSpecifications.operatingVoltage.max }} {{ product.technicalSpecifications.operatingVoltage.unit }}</li>
+                                  </ul>
+                                </div>
+                              </div>
+                            </div>
+
+                            <!-- Operating Temperature -->
+                            <div class="accordion-item border-0">
+                              <h2 class="accordion-header" id="headingTemperature">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#temperature" aria-expanded="false" aria-controls="temperature">
+                                  Operating Temperature
+                                </button>
+                              </h2>
+                              <div id="temperature" class="accordion-collapse collapse" aria-labelledby="headingTemperature" data-bs-parent="#physicalPartAccordion">
+                                <div class="accordion-body">
+                                  <ul class="list-unstyled mb-0">
+                                    <li><strong>Min:</strong> {{ product.technicalSpecifications.operatingTemperature.min }} {{ product.technicalSpecifications.operatingTemperature.unit }}</li>
+                                    <li><strong>Max:</strong> {{ product.technicalSpecifications.operatingTemperature.max }} {{ product.technicalSpecifications.operatingTemperature.unit }}</li>
+                                  </ul>
+                                </div>
+                              </div>
+                            </div>
+
+                            <!-- Compliance -->
+                            <div class="accordion-item border-0">
+                              <h2 class="accordion-header" id="headingCompliance">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#compliance" aria-expanded="false" aria-controls="compliance">
+                                  Compliance & IP Rating
+                                </button>
+                              </h2>
+                              <div id="compliance" class="accordion-collapse collapse" aria-labelledby="headingCompliance" data-bs-parent="#physicalPartAccordion">
+                                <div class="accordion-body">
+                                  <ul class="list-unstyled mb-0">
+                                    <li><strong>IP Rating:</strong> {{ product.technicalSpecifications.ipRating }}</li>
+                                    <li><strong>Compliance:</strong> {{ product.technicalSpecifications.compliance|join:", " }}</li>
+                                  </ul>
+                                </div>
+                              </div>
+                            </div>
+
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Cyber Part -->
+                    <div class="accordion-item">
+                      <h2 class="accordion-header" id="headingCyberPart">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#cyberPart" aria-expanded="false" aria-controls="cyberPart">
+                          Cyber Part
+                        </button>
+                      </h2>
+                      <div id="cyberPart" class="accordion-collapse collapse" aria-labelledby="headingCyberPart" data-bs-parent="#productDescriptionAccordion">
+                        <div class="accordion-body">
+                          <ul class="list-unstyled mb-0">
+                            <li><strong>Sensor Type:</strong> {{ product.technicalSpecifications.additionalSpecs.sensorType }}</li>
+                            <li><strong>Accuracy:</strong> {{ product.technicalSpecifications.additionalSpecs.accuracy }}</li>
+                            <li><strong>Calibration Interval:</strong> {{ product.technicalSpecifications.additionalSpecs.calibrationInterval }} days</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                 </div>
               </div>
             </div>
+
 
             <!-- Production Data Tab -->
             <div class="tab-pane fade" id="productiondata" role="tabpanel">

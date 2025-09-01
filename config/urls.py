@@ -26,7 +26,7 @@ urlpatterns = [
     path("", include("apps.home.urls")),
 
     # Products urls
-    path("products/", include("apps.products.urls")),
+    path('products/', include('apps.products.urls'))
 
 ]
 

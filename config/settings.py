@@ -13,6 +13,8 @@ import os
 import random
 import string
 from pathlib import Path
+from decouple import config
+import mongoengine
 
 from dotenv import load_dotenv
 
@@ -22,6 +24,18 @@ load_dotenv()  # take environment variables from .env.
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Conexão ao MongoDB (exemplo com .env)
+MONGODB_NAME = config('MONGO_DB', default='products')
+MONGODB_HOST = config('MONGO_HOST', default='localhost')
+MONGODB_PORT = config('MONGO_PORT', default=27017)
+
+MONGODB_URI = f'mongodb://{MONGODB_HOST}:{MONGODB_PORT}/{MONGODB_NAME}'
+
+mongoengine.connect(
+    db=MONGODB_NAME,
+    host=MONGODB_URI
+)
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/

@@ -1,128 +1,165 @@
 from django.shortcuts import render
 from django.views.generic import TemplateView
 from web_project import TemplateLayout
-from apps.utils.menu_utils import get_menu_items  # Importa o utilitário do menu
+from apps.utils.menu_utils import get_menu_items
+from rest_framework import viewsets, status
+from apps.products.serializers import ProductsSerializer
+from rest_framework.response import Response
+from apps.products.models import Products
+from django.shortcuts import get_object_or_404
+from django.core.files.storage import default_storage
+from django.http import JsonResponse
+import json
+
+def clean_empty_strings(data):
+    for key, value in data.items():
+        if isinstance(value, dict):
+            clean_empty_strings(value)
+        elif isinstance(value, str) and value.strip() == "":
+            data[key] = None
+
+
+class ProductsViewSet(viewsets.ViewSet):
+    serializer_class = ProductsSerializer
+
+    def list(self, request):
+        try:
+            produtos = Products.objects.filter(isActive=True)
+            if not produtos:
+                return Response({
+                    "success": True,
+                    "data": [],
+                    "message": "Nenhum produto encontrado"
+                }, status=status.HTTP_200_OK)
+
+            serializer = self.serializer_class(produtos, many=True)
+            return Response({
+                "success": True,
+                "data": serializer.data
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            print(f"Erro no MongoDB: {str(e)}")
+            return Response({
+                "success": False,
+                "error": "Erro no servidor de banco de dados",
+                "details": str(e)
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    def create(self, request):
+
+        try:
+            json_data = json.loads(request.data.get('json', '{}'))
+            clean_empty_strings(json_data)
+            serializer = self.serializer_class(data=json_data)
+            if serializer.is_valid():
+                product = serializer.save()
+
+                if 'manualFile' in request.FILES:
+                    file = request.FILES['manualFile']
+                    product.manualFile.put(file, filename=file.name)
+                    product.save()
+
+                return Response({
+                    "success": True,
+                    "id": str(product.id),
+                    "message": "Produto criado com sucesso"
+                }, status=status.HTTP_201_CREATED)
+            else:
+                return Response({
+                    "success": False,
+                    "errors": serializer.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        except json.JSONDecodeError as e:
+            return Response({
+                "success": False,
+                "error": "Erro ao processar JSON",
+                "details": str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+    def retrieve(self, request, pk=None):
+        try:
+            product = Products.objects.get(id=pk)
+            serializer = self.serializer_class(product)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Products.DoesNotExist:
+            return Response({
+                "success": False,
+                "error": "Produto não encontrado"
+            }, status=status.HTTP_404_NOT_FOUND)
+
+    def update(self, request, pk=None):
+
+        try:
+            product = Products.objects.get(id=pk)
+            json_data = json.loads(request.data.get('json', '{}'))
+            clean_empty_strings(json_data)
+            serializer = self.serializer_class(product, data=json_data, partial=True)
+            if serializer.is_valid():
+                updated_product = serializer.save()
+
+                # Atualizar o PDF, se fornecido
+                if 'manualFile' in request.FILES:
+                    file = request.FILES['manualFile']
+                    updated_product.manualFile.replace(file, filename=file.name)
+                    updated_product.save()
+
+                return Response({
+                    "success": True,
+                    "id": str(updated_product.id),
+                    "message": "Produto atualizado com sucesso"
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    "success": False,
+                    "errors": serializer.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        except Products.DoesNotExist:
+            return Response({
+                "success": False,
+                "error": "Produto não encontrado"
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        except json.JSONDecodeError as e:
+            return Response({
+                "success": False,
+                "error": "Erro ao processar JSON",
+                "details": str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+    def destroy(self, request, pk=None):
+        try:
+            product = Products.objects.get(id=pk)
+            product.identification.isActive = False
+            product.save()
+            return Response({
+                "success": True,
+                "message": "Produto desativado com sucesso"
+            }, status=status.HTTP_200_OK)
+        except Products.DoesNotExist:
+            return Response({
+                "success": False,
+                "error": "Produto não encontrado"
+            }, status=status.HTTP_404_NOT_FOUND)
 
 
 class ProductsViews(TemplateView):
     def get_context_data(self, **kwargs):
         context = TemplateLayout.init(self, super().get_context_data(**kwargs))
-
-        # Popula os itens do menu usando o utilitário
         context['menu_items'] = get_menu_items(self.request)
-
         return context
 
-MOCK_PRODUCTS = {
-    "conv000": {
-        "id": "conv000",
-        "brandName": "Modular Conveyor",
-        "modelName": "Transfer System DPP",
-        "sku": "MCT-DPP-001",
-        "upc": "100000000001",
-        "productCategory": "Sistemas de Transporte",
-        "isActive": True,
-        "description": "Sistema modular de transporte com passaporte digital integrado",
-        "price": 125000.00,
-        "stock": 3,
-        "imageUrl": "https://victoriamelo.github.io/Modular_Conveyor_Transfer_System_DPP/Conveyor_system.jpg",
-        "createdAt": "2023-05-10",
-        "features": [
-            "Modularidade completa",
-            "Rastreabilidade digital",
-            "Sistema de transferência automatizado",
-            "Integração com IoT"
-        ],
-        "dppUrl": "https://victoriamelo.github.io/Modular_Conveyor_Transfer_System_DPP/"
-    },
-    "conv001": {
-        "id": "conv001",
-        "brandName": "Digital Conveyor",
-        "modelName": "Passport System 1",
-        "sku": "DCP-PS1-002",
-        "upc": "100000000002",
-        "productCategory": "Sistemas de Transporte",
-        "isActive": True,
-        "description": "Esteira transportadora com tecnologia de passaporte digital de primeira geração",
-        "price": 98000.00,
-        "stock": 5,
-        "imageUrl": "https://victoriamelo.github.io/Digital-Product-Passport-Conveyor1/Conv1_qrcode.jpg",
-        "createdAt": "2023-06-15",
-        "features": [
-            "Estrutura robusta",
-            "Sensores integrados",
-            "Painel de controle digital"
-        ],
-        "dppUrl": "https://victoriamelo.github.io/Digital-Product-Passport-Conveyor1/"
-    },
-    "conv002": {
-        "id": "conv002",
-        "brandName": "Digital Conveyor",
-        "modelName": "Passport System 2",
-        "sku": "DCP-PS2-003",
-        "upc": "100000000003",
-        "productCategory": "Sistemas de Transporte",
-        "isActive": True,
-        "description": "Segunda geração de esteira com passaporte digital avançado",
-        "price": 115000.00,
-        "stock": 2,
-        "imageUrl": "https://victoriamelo.github.io/Digital-Product-Passport-Conveyor2/Conv2_qrcode.jpg",
-        "createdAt": "2023-07-20",
-        "features": [
-            "Estrutura robusta",
-            "Sensores integrados",
-            "Painel de controle digital"
-        ],
-        "dppUrl": "https://victoriamelo.github.io/Digital-Product-Passport-Conveyor2/"
-    },
-    "conv003": {
-        "id": "conv003",
-        "brandName": "Digital Conveyor",
-        "modelName": "Passport System 3",
-        "sku": "DCP-PS3-004",
-        "upc": "100000000004",
-        "productCategory": "Sistemas de Transporte",
-        "isActive": True,
-        "description": "Terceira geração com tecnologia de passaporte digital e análise preditiva",
-        "price": 135000.00,
-        "stock": 4,
-        "imageUrl": "https://victoriamelo.github.io/Digital-Product-Passport-Conveyor3/Conv3_qrcode.jpg",
-        "createdAt": "2023-08-25",
-        "features": [
-            "Estrutura robusta",
-            "Sensores integrados",
-            "Painel de controle digital"
-        ],
-        "dppUrl": "https://victoriamelo.github.io/Digital-Product-Passport-Conveyor3/"
-    },
-    "conv004": {
-        "id": "conv004",
-        "brandName": "Digital Conveyor",
-        "modelName": "Passport System 4",
-        "sku": "DCP-PS4-005",
-        "upc": "100000000005",
-        "productCategory": "Sistemas de Transporte",
-        "isActive": True,
-        "description": "Quarta geração com passaporte digital e inteligência artificial",
-        "price": 155000.00,
-        "stock": 1,
-        "imageUrl": "https://victoriamelo.github.io/Digital-Product-Passport-Conveyor4/Conv4_qrcode.jpg",
-        "createdAt": "2023-09-30",
-        "features": [
-            "Estrutura robusta",
-            "Sensores integrados",
-            "Painel de controle digital"
-        ],
-        "dppUrl": "https://victoriamelo.github.io/Digital-Product-Passport-Conveyor4/"
-    }
-}
 
 def product_details(request, product_id):
-    product = MOCK_PRODUCTS.get(product_id)
+    product = Products.objects(id=product_id).first()
     if not product:
         return render(request, '404.html', status=404)
 
-    # Chama TemplateLayout.init manualmente
-    context = TemplateLayout.init(request, {'product': product})
+    product_data = product.to_mongo()
+    context = TemplateLayout.init(request, {'product': product_data})
     context['menu_items'] = get_menu_items(request)
     return render(request, 'productDetail.html', context)

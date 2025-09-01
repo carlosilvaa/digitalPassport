@@ -30,6 +30,7 @@
 {% block page_js %}
 {{ block.super }}
  <script src="{% static 'products/js/products.js' %}"></script>
+ <script src="{% static 'js/utils.js' %}"></script>
  
 {% endblock page_js %}
 
@@ -56,21 +57,34 @@
 
   <div class="modal fade" id="product-modal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title" id="productFormModalLabel">Adicionar Novo Produto</h5>
+      <div class="modal-content border-0">
+        <div class="modal-header p-2 px-3">
+          <h5 class="modal-title fs-6" id="productFormModalLabel">Adicionar Novo Produto</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
-        <div class="modal-body">
+        <div class="modal-body p-2">
           <div id="product-form">
             <div class="bs-stepper" id="product-stepper">
-                <div class="bs-stepper-header overflow-auto" id="stepper-header" role="tablist"></div>
-              <div class="bs-stepper-content" id="stepper-content"></div>
+              <div class="bs-stepper-header overflow-auto px-2" id="stepper-header" role="tablist"></div>
+              <div class="bs-stepper-content p-1" id="stepper-content"></div>
             </div>
           </div>
+        </div>
+        <div class="modal-footer p-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="btnPrevStep" style="display: none;">
+            <i class="bx bx-chevron-left me-1"></i> Voltar
+          </button>
+          <button type="button" class="btn btn-sm btn-primary" id="btnNextStep">
+            Avançar <i class="bx bx-chevron-right ms-1"></i>
+          </button>
+          <button type="button" class="btn btn-sm btn-success" id="btnSubmitForm" style="display: none;">
+            <i class="bx bx-save me-1"></i> Salvar
+          </button>
         </div>
       </div>
     </div>
   </div>
 </div>
+
+<div id="alerts-container" class="position-fixed end-0 top-0 p-3" style="z-index: 11000; width: auto; max-width: 100%;"></div>
 {% endblock content %}
