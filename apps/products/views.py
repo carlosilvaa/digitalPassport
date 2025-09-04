@@ -258,7 +258,12 @@ def product_details(request, product_id):
     if not product:
         return render(request, '404.html', status=404)
 
-    product_data = product.to_mongo()
-    context = TemplateLayout.init(request, {'product': product_data})
+    serializer = ProductsSerializer(product)
+    product_data = serializer.data
+
+    context = TemplateLayout.init(request, {
+        'product': product_data,
+        'product_json_str': json.dumps(product_data, ensure_ascii=False)
+    })
     context['menu_items'] = get_menu_items(request)
     return render(request, 'productDetail.html', context)

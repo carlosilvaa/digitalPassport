@@ -55,12 +55,12 @@ class TechnicalSpecifications(EmbeddedDocument):
     additionalSpecs = EmbeddedDocumentField(AdditionalSpecs, null=True)
 
 class InstructionManual(EmbeddedDocument):
-    url = URLField(null=True)
+    url = StringField(null=True)
     version = StringField(null=True)
 
 class Warranty(EmbeddedDocument):
     durationMonths = IntField(null=True)
-    termsUrl = URLField(null=True)
+    termsUrl = StringField(null=True)
 
 class Documentation(EmbeddedDocument):
     instructionManual = EmbeddedDocumentField(InstructionManual, null=True)
@@ -69,17 +69,17 @@ class Documentation(EmbeddedDocument):
 class Recycling(EmbeddedDocument):
     isRecyclable = BooleanField(null=True)
     recyclabilityPercentage = FloatField(null=True)
-    recyclingInstructionsUrl = URLField(null=True)
+    recyclingInstructionsUrl = StringField(null=True)
 
 class Disassembly(EmbeddedDocument):
     timeRequiredMinutes = IntField(null=True)
     toolRequirements = ListField(StringField(), null=True)
-    instructionsUrl = URLField(null=True)
+    instructionsUrl = StringField(null=True)
     difficultyRating = IntField(null=True)
 
 class TakeBackProgram(EmbeddedDocument):
     isAvailable = BooleanField(null=True)
-    programUrl = URLField(null=True)
+    programUrl = StringField(null=True)
 
 class Disposal(EmbeddedDocument):
     hazardousComponentsPresent = BooleanField(null=True)

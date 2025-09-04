@@ -253,14 +253,12 @@ function fillForm(data) {
   $('#sustainability_recycling_recyclabilityPercentage').val(
     data.sustainability?.recycling?.recyclabilityPercentage || ''
   );
-  $('#sustainability_recycling_recyclingInstructionsUrl').val(
-    data.sustainability?.recycling?.recyclingInstructionsUrl || ''
-  );
+  $('#sustainability_recycling_recyclingInstructions').val(data.sustainability?.recycling?.recyclingInstructionsUrl || '');
 
   // SUSTENTABILIDADE — DISASSEMBLY (usar URL com id ..._instructionsUrl)
   $('#sustainability_disassembly_timeRequiredMinutes').val(data.sustainability?.disassembly?.timeRequiredMinutes || '');
   $('#sustainability_disassembly_difficultyRating').val(data.sustainability?.disassembly?.difficultyRating || '');
-  $('#sustainability_disassembly_instructionsUrl').val(data.sustainability?.disassembly?.instructionsUrl || '');
+  $('#sustainability_disassembly_instructions').val(data.sustainability?.disassembly?.instructionsUrl || '');
   $('#sustainability_disassembly_toolRequirements').val(
     (data.sustainability?.disassembly?.toolRequirements || []).join(', ')
   );
@@ -294,6 +292,7 @@ function fillForm(data) {
   $('#productLifecycle_endOfLifeDate').val(data.productLifecycle?.endOfLifeDate || '');
 
   if (data.imageUrl) {
+    $('#image_present').val('1'); // existe imagem
     $('#imageFileList').html(`
       <div class="d-flex justify-content-between align-items-center bg-white p-2 rounded shadow-sm border">
         <span><i class="bx bx-image me-2"></i> ${data.imageFileName || 'Imagem atual'}</span>
@@ -309,7 +308,10 @@ function fillForm(data) {
       $('#imageFile').val('');
       $('#imageFileList').empty();
       $('#removeImageFlag').val('true');
+      $('#image_present').val(''); 
     });
+  } else {
+    $('#image_present').val(''); 
   }
 
   if (data.manualUrl) {
@@ -333,20 +335,54 @@ function fillForm(data) {
 }
 
 function validateForm() {
-  let isValid = true;
+    let isValid = true;
 
-  // Validar campos obrigatórios
-  const requiredFields = ['#identification_brandName', '#identification_modelName'];
+  function showError($field, message) {
+    $field.addClass('is-invalid');
+    let $fb = $field.siblings('.invalid-feedback');
+    if (!$fb.length) $fb = $('<div class="invalid-feedback"></div>').insertAfter($field);
+    if (message) $fb.text(message);
+  }
+  function clearError($field) {
+    $field.removeClass('is-invalid');
+    $field.siblings('.invalid-feedback').remove();
+  }
 
+  const requiredFields = ['#identification_brandName', '#identification_modelName', '#description'];
   requiredFields.forEach(selector => {
     const $field = $(selector);
-    if (!$field.val().trim()) {
-      $field.addClass('is-invalid');
+    if (!$field.val() || !$field.val().trim()) {
+      showError($field, 'Campo obrigatório');
       isValid = false;
     } else {
-      $field.removeClass('is-invalid');
+      clearError($field);
     }
   });
+
+  const $file = $('#imageFile');
+  const fileChosen = ($file[0] && $file[0].files && $file[0].files.length > 0);
+  const imagePresentVal = ($('#image_present').val() || '').toString().trim();
+  const imagePresent = ['1','true','yes'].includes(imagePresentVal.toLowerCase())
+                       || /^https?:\/\//i.test(imagePresentVal)
+                       || imagePresentVal.length > 3;
+  const removeChecked = ($('#removeImageFlag').val() || '').toString().toLowerCase() === 'true';
+  const imageKept = imagePresent && !removeChecked;
+
+  if (!(fileChosen || imageKept)) {
+    showError($file, 'Uma imagem é obrigatória.');
+    isValid = false;
+  } else {
+    clearError($file);
+  }
+
+  if (!isValid) {
+    const $first = $('.is-invalid').first();
+    if ($first.length) {
+      const idx = getStepIndexFromField($first); 
+      if (typeof stepper?.to === 'function') stepper.to(idx + 1);
+      setTimeout(() => $first.trigger('focus'), 150);
+    }
+  }
 
   return isValid;
 }
@@ -355,9 +391,6 @@ function openModal(id = null) {
   $('#product-form').trigger('reset');
   currentId = id;
 
-  if (stepper) {
-    stepper.destroy();
-  }
 
   if (stepper) {
     try {
@@ -624,7 +657,7 @@ function openModal(id = null) {
         </div>
         <div class="col-md-12 m-0">
           <label for="sustainability_disassembly_instructions" class="form-label">Instruções de Desmontagem</label>
-          <textarea  class="form-control form-control-sm" id="sustainability_disassembly_instructions"></textarea
+          <textarea class="form-control form-control-sm" id="sustainability_disassembly_instructions"></textarea>
         </div>
 
         <div class="col-12 m-0">
@@ -703,8 +736,8 @@ function openModal(id = null) {
         </div>
 
         <div class="col-md-12 m-0">
-          <label for="documentation_instructionManual_url" class="form-label">Manual de Instruções (URL)</label>
-          <input type="url" class="form-control form-control-sm" id="documentation_instructionManual_url">
+          <label for="documentation_instructionManual_url" class="form-label">Manual de Instruções (texto)</label>
+          <textarea class="form-control form-control-sm" id="documentation_instructionManual_url" rows="3"></textarea>
         </div>
 
         <div class="col-md-12 m-0">
@@ -759,7 +792,6 @@ function openModal(id = null) {
       }
     });
 
-  // No submit, valide tudo e foque na aba certa
   $('#btnSubmitForm')
     .off('click')
     .on('click', function () {
@@ -785,6 +817,10 @@ function openModal(id = null) {
   $('#removeImageFlag, #removeManualFlag').remove();
   $('#product-form').append('<input type="hidden" id="removeImageFlag" value="false">');
   $('#product-form').append('<input type="hidden" id="removeManualFlag" value="false">');
+
+  if (!$('#image_present').length) {
+    $('#product-form').append('<input type="hidden" id="image_present" value="">');
+  }
 
   var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
   tooltipTriggerList.forEach(function (el) {
@@ -837,6 +873,30 @@ function validateCurrentStep() {
     }
   }
 
+  if (currentStepId === 'step-3') {
+    const $file = $('#imageFile');
+    const fileChosen = ($file[0] && $file[0].files && $file[0].files.length > 0);
+    const imagePresent = !!($('#image_present').val() || '').trim();
+    const removeChecked = ($('#removeImageFlag').val() || '').toString().toLowerCase() === 'true';
+    const imageKept = imagePresent && !removeChecked;
+
+    const $description = $('#description');
+
+    if (!$description.val().trim()) {
+      markInvalid($description);
+      isValid = false;
+    } else {
+      clearInvalid($description);
+    }
+
+    if (!(fileChosen || imageKept)) {
+      markInvalid($file, 'Uma imagem é obrigatória.');
+      isValid = false;
+    } else {
+      clearInvalid($file);
+    }
+  }
+
   if (!isValid) {
     showBootstrapAlert('danger', 'Erro', 'Por favor, preencha os campos obrigatórios.');
   }
@@ -882,22 +942,6 @@ function validateAllAndFocus() {
       if (!firstInvalid) firstInvalid = $f;
     } else {
       clearInvalid($f);
-    }
-  });
-
-  $('input[type="url"]').each(function () {
-    const $f = $(this);
-    const val = $f.val().trim();
-    if (!val) {
-      clearInvalid($f);
-      return;
-    }
-    try {
-      new URL(val);
-      clearInvalid($f);
-    } catch {
-      markInvalid($f, 'Introduza um URL válido.');
-      if (!firstInvalid) firstInvalid = $f;
     }
   });
 
@@ -974,42 +1018,38 @@ function saveProduct() {
     description: $('#description').val(),
     documentation: {
       instructionManual: {
-        url: $('#documentation_instructionManual_url').val(),
+        url: $('#documentation_instructionManual_url').val(),  
         version: $('#documentation_instructionManual_version').val()
       },
       warranty: {
-        durationMonths: parseInt($('#documentation_warranty_durationMonths').val() || '0'),
-        termsUrl: $('#documentation_warranty_termsUrl').val()
+        durationMonths: parseInt($('#documentation_warranty_durationMonths').val() || '0', 10),
+        termsUrl: $('#documentation_warranty_termsUrl').val() 
       }
     },
     sustainability: {
       recycling: {
         isRecyclable: $('#sustainability_recycling_isRecyclable').is(':checked'),
         recyclabilityPercentage: parseFloat($('#sustainability_recycling_recyclabilityPercentage').val() || '0'),
-        recyclingInstructionsUrl: $('#sustainability_recycling_recyclingInstructionsUrl').val()
+        recyclingInstructionsUrl: $('#sustainability_recycling_recyclingInstructions').val()  
       },
       disassembly: {
-        timeRequiredMinutes: parseInt($('#sustainability_disassembly_timeRequiredMinutes').val() || '0'),
-        difficultyRating: parseInt($('#sustainability_disassembly_difficultyRating').val() || '0'),
-        instructionsUrl: $('#sustainability_disassembly_instructionsUrl').val(),
+        timeRequiredMinutes: parseInt($('#sustainability_disassembly_timeRequiredMinutes').val() || '0', 10),
+        instructionsUrl: $('#sustainability_disassembly_instructions').val(),                 
+        difficultyRating: parseInt($('#sustainability_disassembly_difficultyRating').val() || '0', 10),
         toolRequirements: ($('#sustainability_disassembly_toolRequirements').val() || '')
-          .split(',')
-          .map(s => s.trim())
-          .filter(Boolean)
+          .split(',').map(s => s.trim()).filter(Boolean)
       },
       disposal: {
         hazardousComponentsPresent: $('#sustainability_disposal_hazardousComponentsPresent').is(':checked'),
         disposalInstructions: $('#sustainability_disposal_disposalInstructions').val(),
         takeBackProgram: {
           isAvailable: $('#sustainability_disposal_takeBackProgram_isAvailable').is(':checked'),
-          programUrl: $('#sustainability_disposal_takeBackProgram_programUrl').val()
+          programUrl: $('#sustainability_disposal_takeBackProgram_programUrl').val() 
         }
       },
       reuse: {
         componentsReusable: ($('#sustainability_reuse_componentsReusable').val() || '')
-          .split(',')
-          .map(s => s.trim())
-          .filter(Boolean),
+          .split(',').map(s => s.trim()).filter(Boolean),
         refurbishmentPotential: $('#sustainability_reuse_refurbishmentPotential').is(':checked')
       }
     },
@@ -1067,17 +1107,17 @@ function saveProduct() {
         }
       }
 
-      if (errors.documentation?.instructionManual?.url?.length) {
-        applyErr('#documentation_instructionManual_url', errors.documentation.instructionManual.url[0]);
+      if (errors?.documentation?.instructionManual?.url?.length) {
+        applyErr('#documentation_instructionManual_url',
+                errors.documentation.instructionManual.url[0]);
       }
-      if (errors.sustainability?.recycling?.recyclingInstructionsUrl?.length) {
-        applyErr(
-          '#sustainability_recycling_recyclingInstructionsUrl',
-          errors.sustainability.recycling.recyclingInstructionsUrl[0]
-        );
+      if (errors?.sustainability?.recycling?.recyclingInstructionsUrl?.length) {
+        applyErr('#sustainability_recycling_recyclingInstructions',
+                errors.sustainability.recycling.recyclingInstructionsUrl[0]);
       }
-      if (errors.sustainability?.disassembly?.instructionsUrl?.length) {
-        applyErr('#sustainability_disassembly_instructionsUrl', errors.sustainability.disassembly.instructionsUrl[0]);
+      if (errors?.sustainability?.disassembly?.instructionsUrl?.length) {
+        applyErr('#sustainability_disassembly_instructions',
+                errors.sustainability.disassembly.instructionsUrl[0]);
       }
       if (errors.documentation?.warranty?.termsUrl?.length) {
         applyErr('#documentation_warranty_termsUrl', errors.documentation.warranty.termsUrl[0]);
@@ -1260,8 +1300,13 @@ function initFileUploadArea() {
   $browseImgBtn.off('click').on('click', () => $imgInput.trigger('click'));
   $imgInput.off('change').on('change', function () {
     const f = this.files[0];
-    if (f && validateImg(f)) renderImg(f);
-    else clearImg();
+    if (f && validateImg(f)) {
+      renderImg(f);
+      $('#image_present').val('1');
+      $('#removeImageFlag').val('false');
+    } else {
+      clearImg();
+    }
   });
   $imgDropZone.off('dragover').on('dragover', e => {
     e.preventDefault();
@@ -1275,38 +1320,10 @@ function initFileUploadArea() {
     if (f && validateImg(f)) {
       $imgInput[0].files = e.originalEvent.dataTransfer.files;
       renderImg(f);
+      $('#image_present').val('1');
+      $('#removeImageFlag').val('false');
     } else clearImg();
-  });
-
-  // Validação inline de URLs
-  $(document)
-    .off('blur.url', 'input[type="url"]')
-    .on('blur.url', 'input[type="url"]', function () {
-      const val = this.value.trim();
-      if (!val) {
-        $(this).removeClass('is-invalid');
-        return;
-      }
-      try {
-        new URL(val);
-        $(this).removeClass('is-invalid');
-      } catch {
-        $(this).addClass('is-invalid');
-      }
-    })
-    .off('input.url change.url', 'input[type="url"]')
-    .on('input.url change.url', 'input[type="url"]', function () {
-      if ($(this).hasClass('is-invalid')) {
-        const val = this.value.trim();
-        if (!val) $(this).removeClass('is-invalid');
-        else {
-          try {
-            new URL(val);
-            $(this).removeClass('is-invalid');
-          } catch {}
-        }
-      }
-    });
+  }); 
 }
 
 $(document).ready(function () {

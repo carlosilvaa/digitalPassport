@@ -2,7 +2,8 @@
 {% load static %}
 {% load i18n %}
 
-{% block title %}{{ product.brandName }} {{ product.modelName }} - Digital Passport{% endblock %}
+
+{% block title %}{{ product.identification.brandName }} {{ product.identification.modelName }} - Digital Passport{% endblock %}
 
 {% block vendor_css %}
 {{ block.super }}
@@ -18,28 +19,33 @@
 {{ block.super }}
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/loaders/GLTFLoader.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/moment@2.30.1/min/moment.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/moment@2.30.1/locale/pt-br.min.js"></script>
+<script>moment.locale('pt-br');</script>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 {% endblock vendor_js %}
 
 {% block page_js %}
 {{ block.super }}
-<script src="{% static 'home/js/conveyor-passport.js' %}"></script>
-<script>
-  // Pass product data to JavaScript
-  const productData = {
-    id: '{{ product.id }}',
-    brandName: '{{ product.brandName }}',
-    modelName: '{{ product.modelName }}',
-    description: '{{ product.description }}',
-    imageUrl: '{{ product.imageUrl }}',
-    features: {{ product.features|safe }},
-    dppUrl: '{{ product.dppUrl }}'
-  };
-</script>
+  <script id="product-data" type="application/json">
+    {{ product_json_str|safe }}
+  </script>
+
+  <script id="conveyor-passport-js"
+          src="{% static 'home/js/conveyor-passport.js' %}"
+          data-broker="wss://test.mosquitto.org:8081"
+          data-topic="conveyor3/status"></script>
+
+  <script>
+    window.productData = JSON.parse(document.getElementById('product-data').textContent);
+  </script>
+
+
 {% endblock page_js %}
 
 {% block content %}
@@ -57,8 +63,21 @@
       <div class="card h-100">
         <div class="card-body text-center">
           <div class="d-flex flex-column align-items-center gap-3">
-            <img src="{{ product.imageUrl }}" alt="{{ product.brandName }} {{ product.modelName }}" class="img-fluid" style="max-width: 200px;">
-            <a href="{{ product.dppUrl }}" target="_blank" class="btn btn-primary">COLOCAR UM QR CODE AQUI</a>
+            <img id="product-image"
+                src="{{ product.imageUrl }}"
+                alt="{{ product.identification.brandName }} {{ product.identification.modelName }}"
+                class="img-fluid"
+                style="max-width: 200px;"
+                data-placeholder="https://img.freepik.com/premium-vector/default-image-icon-vector-missing-picture-page-website-design-mobile-app-no-photo-available_87543-11093.jpg?w=360">
+
+            <a href="{{ product.documentation.instructionManual.url }}"
+              target="_blank"
+              class="btn btn-primary">COLOCAR UM QR CODE AQUI</a>
+
+            <h3 class="card-title mb-0 text-center">
+              {{ product.identification.brandName|default:"Não informado" }}
+              {{ product.identification.modelName|default:"Não informado" }} - Digital Passport
+            </h3>
           </div>
         </div>
       </div>
@@ -68,7 +87,7 @@
     <div class="col-12 col-md-9">
       <div class="card h-100">
         <div class="card-header bg-light">
-          <h3 class="card-title mb-0 text-center">{{ product.brandName }} {{ product.modelName }} - Digital Passport</h3>
+          <h3 class="card-title mb-0 text-center">{{ product.identification.brandName }} {{ product.identification.modelName }} - Digital Passport</h3>
         </div>
         
         <div class="card-body p-0">
@@ -97,7 +116,7 @@
           </div>
 
           <!-- Tab Content -->
-          <div class="tab-content p-3">
+          <div class="tab-content p-3" id="product-detail">
             <!-- Identification Tab -->
             <div class="tab-pane fade show active" id="identification" role="tabpanel">
               <div class="card border-0 shadow-none mb-4">
@@ -108,28 +127,40 @@
                       <tbody>
                         <tr>
                           <th width="30%">Brand:</th>
-                          <td class="fw-medium">{{ product.brandName }}</td>
+                          <td class="fw-medium">{{ product.identification.brandName|default:"Não informado" }}</td>
                         </tr>
                         <tr>
                           <th>Model:</th>
-                          <td class="fw-medium">{{ product.modelName }}</td>
+                          <td class="fw-medium">{{ product.identification.modelName|default:"Não informado" }}</td>
                         </tr>
                         <tr>
                           <th>SKU:</th>
-                          <td class="fw-medium">{{ product.sku }}</td>
+                          <td class="fw-medium">{{ product.identification.sku|default:"Não informado" }}</td>
                         </tr>
                         <tr>
                           <th>UPC:</th>
-                          <td class="fw-medium">{{ product.upc }}</td>
+                          <td class="fw-medium">{{ product.identification.upc|default:"Não informado" }}</td>
                         </tr>
                         <tr>
                           <th>Description:</th>
-                          <td>{{ product.description }}</td>
+                          <td>{{ product.description|default:"Não informado" }}</td>
                         </tr>
                         <tr>
-                          <th>Digital Passport:</th>
-                          <td>
-                            <a href="{{ product.dppUrl }}" target="_blank" class="fw-medium">Acessar</a>
+                          <th>Digital Passport (Manual PDF):</th>
+                          <td class="fw-medium">
+                            {% if product.manualUrl %}
+                              <a href="{{ product.manualUrl }}"
+                                class="btn btn-sm btn-outline-primary"
+                                target="_blank"
+                                download="{{ product.identification.brandName|default:'Produto' }}-{{ product.identification.modelName|default:'Modelo' }}-manual.pdf">
+                                <i class="bx bx-download me-1"></i> Baixar PDF
+                              </a>
+                              {% if product.documentation.instructionManual.version %}
+                                <small class="text-muted ms-2">versão {{ product.documentation.instructionManual.version }}</small>
+                              {% endif %}
+                            {% else %}
+                              <span>Não informado</span>
+                            {% endif %}
                           </td>
                         </tr>
                       </tbody>
@@ -279,6 +310,7 @@
                   <div class="card h-100 border-0 shadow-none">
                     <div class="card-body">
                       <h5 class="card-title mb-4">Manufacturing Information</h5>
+                      <h5 class="card-title mb-3">Perguntar para Victória o que vamos fazer com essa aba, pq não temos nada no cadastro</h5>
                       <div class="table-responsive">
                         <table class="table table-borderless mb-0">
                           <tbody>
@@ -321,6 +353,7 @@
               <div class="card border-0 shadow-none">
                 <div class="card-body">
                   <h5 class="card-title mb-3">Conveyor Operation</h5>
+                  <h5 class="card-title mb-3">Perguntar para Victória o que vamos fazer com essa aba, pq não temos nada no cadastro</h5>
                   <p class="mb-3">The conveyor's functioning is presented in the following video</p>
                   <div class="ratio ratio-16x9">
                     <video controls class="rounded">
@@ -412,6 +445,7 @@
               <div class="card border-0 shadow-none">
                 <div class="card-body text-center">
                   <h5 class="card-title mb-3">Contact Information</h5>
+                  <h5 class="card-title mb-3">Perguntar para Victória o que vamos fazer com essa aba, pq não temos nada no cadastro</h5>
                   <p class="mb-4">More information about the Conveyor Digital Passport:</p>
                   <p class="fw-medium mb-4">victoria@ipb.pt</p>
                   <div class="d-flex flex-wrap justify-content-center gap-4">

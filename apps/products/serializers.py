@@ -67,12 +67,13 @@ class TechnicalSpecificationsSerializer(serializers.Serializer):
 # --- Sustainability ---
 
 class InstructionManualSerializer(serializers.Serializer):
-    url = serializers.URLField(required=False, allow_null=True)
-    version = serializers.CharField(required=False, allow_null=True)
+    url = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    version = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
 class WarrantySerializer(serializers.Serializer):
     durationMonths = serializers.IntegerField(required=False, allow_null=True)
-    termsUrl = serializers.URLField(required=False, allow_null=True)
+    termsUrl = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+
 
 class DocumentationSerializer(serializers.Serializer):
     instructionManual = InstructionManualSerializer(required=False, allow_null=True)
@@ -82,19 +83,18 @@ class DocumentationSerializer(serializers.Serializer):
 class RecyclingSerializer(serializers.Serializer):
     isRecyclable = serializers.BooleanField(required=False)
     recyclabilityPercentage = serializers.FloatField(required=False, allow_null=True)
-    recyclingInstructionsUrl = serializers.URLField(required=False, allow_null=True)
-
+    recyclingInstructionsUrl = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
 class DisassemblySerializer(serializers.Serializer):
     timeRequiredMinutes = serializers.IntegerField(required=False, allow_null=True)
     toolRequirements = serializers.ListField(child=serializers.CharField(), required=False, allow_null=True)
-    instructionsUrl = serializers.URLField(required=False, allow_null=True)
+    instructionsUrl = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     difficultyRating = serializers.IntegerField(required=False, allow_null=True)
 
 
 class TakeBackProgramSerializer(serializers.Serializer):
     isAvailable = serializers.BooleanField(required=False)
-    programUrl = serializers.URLField(required=False, allow_null=True)
+    programUrl = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
 
 class DisposalSerializer(serializers.Serializer):

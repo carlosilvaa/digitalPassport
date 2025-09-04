@@ -59,22 +59,22 @@ class TechnicalSpecificationsForm(forms.Form):
 
 
 class DocumentationForm(forms.Form):
-    instructionManual_url = forms.URLField(required=False, label="Manual de Instruções (URL)", widget=forms.URLInput(attrs={'class': 'form-control'}))
+    instructionManual_url = forms.CharField(required=False, label="Manual de Instruções (texto)", widget=forms.Textarea(attrs={'class': 'form-control'}))  
     instructionManual_version = forms.CharField(required=False, label="Versão do Manual", widget=forms.TextInput(attrs={'class': 'form-control'}))
     warranty_durationMonths = forms.IntegerField(required=False, label="Garantia (meses)", widget=forms.NumberInput(attrs={'class': 'form-control'}))
-    warranty_termsUrl = forms.URLField(required=False, label="Termos da Garantia", widget=forms.URLInput(attrs={'class': 'form-control'}))
+    warranty_termsUrl = forms.CharField(required=False, label="Termos da Garantia (texto)", widget=forms.Textarea(attrs={'class': 'form-control'}))  
 
 
 class RecyclingForm(forms.Form):
     isRecyclable = forms.BooleanField(required=False, label="Reciclável?", widget=forms.CheckboxInput())
     recyclabilityPercentage = forms.FloatField(required=False, label="Reciclabilidade (%)", widget=forms.NumberInput(attrs={'class': 'form-control'}))
-    recyclingInstructionsUrl = forms.URLField(required=False, label="Instruções de Reciclagem (URL)", widget=forms.URLInput(attrs={'class': 'form-control'}))
+    recyclingInstructionsUrl = forms.CharField(required=False, label="Instruções de Reciclagem", widget=forms.Textarea(attrs={'class': 'form-control'}))  
 
 
 class DisassemblyForm(forms.Form):
     timeRequiredMinutes = forms.IntegerField(required=False, label="Tempo de Desmontagem (min)", widget=forms.NumberInput(attrs={'class': 'form-control'}))
     toolRequirements = forms.CharField(required=False, label="Ferramentas", widget=forms.TextInput(attrs={'class': 'form-control'}))
-    instructionsUrl = forms.URLField(required=False, label="Instruções de Desmontagem (URL)", widget=forms.URLInput(attrs={'class': 'form-control'}))
+    instructionsUrl = forms.CharField(required=False, label="Instruções de Desmontagem", widget=forms.Textarea(attrs={'class': 'form-control'})) 
     difficultyRating = forms.IntegerField(required=False, label="Dificuldade (1 a 5)", widget=forms.NumberInput(attrs={'class': 'form-control'}))
 
 
@@ -82,7 +82,7 @@ class DisposalForm(forms.Form):
     hazardousComponentsPresent = forms.BooleanField(required=False, label="Componentes Perigosos?", widget=forms.CheckboxInput())
     disposalInstructions = forms.CharField(required=False, label="Instruções de Descarte", widget=forms.Textarea(attrs={'class': 'form-control'}))
     takeBackProgram_isAvailable = forms.BooleanField(required=False, label="Programa de Retorno Disponível?", widget=forms.CheckboxInput())
-    takeBackProgram_programUrl = forms.URLField(required=False, label="URL do Programa", widget=forms.URLInput(attrs={'class': 'form-control'}))
+    takeBackProgram_programUrl = forms.CharField(required=False, label="Programa de Retorno (texto)", widget=forms.Textarea(attrs={'class': 'form-control'}))  
 
 
 class ReuseForm(forms.Form):
