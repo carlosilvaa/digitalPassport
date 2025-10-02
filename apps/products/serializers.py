@@ -133,6 +133,12 @@ class ProductsSerializer(serializers.Serializer):
     description = serializers.CharField(allow_blank=True, required=False, allow_null=True)
     imageUrl = serializers.URLField(allow_blank=True, required=False, allow_null=True)
     createdAt = serializers.DateTimeField(read_only=True)
+    
+    updatedAt = serializers.DateTimeField(read_only=True)
+    createdById   = serializers.CharField(read_only=True)
+    updatedById   = serializers.CharField(read_only=True)
+    ownerUserId   = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    companyUserId = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
     def get__id(self, obj):
         return {"$oid": str(obj.id)}

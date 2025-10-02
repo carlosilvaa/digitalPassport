@@ -2,7 +2,7 @@
 {% load static %}
 {% load i18n %}
 
-{% block title %}{{ product.brandName }} {{ product.modelName }} - Digital Passport{% endblock %}
+{% block title %}{{ product.identification.brandName }} {{ product.identification.modelName }} - Digital Passport{% endblock %}
 
 {% block vendor_css %}
 {{ block.super }}
@@ -32,7 +32,7 @@
   // Pass product data to JavaScript
   const productData = {
     id: '{{ product.id }}',
-    brandName: '{{ product.brandName }}',
+    brandName: '{{ product.identification.brandName  }}',
     modelName: '{{ product.modelName }}',
     description: '{{ product.description }}',
     imageUrl: '{{ product.imageUrl }}',
@@ -57,7 +57,7 @@
       <div class="card h-100">
         <div class="card-body text-center">
           <div class="d-flex flex-column align-items-center gap-3">
-            <img src="{{ product.imageUrl }}" alt="{{ product.brandName }} {{ product.modelName }}" class="img-fluid" style="max-width: 200px;">
+            <img src="{{ product.imageUrl }}" alt="{{ product.identification.brandName }} {{ product.identification.modelName }}" class="img-fluid" style="max-width: 200px;">
             <a href="{{ product.dppUrl }}" target="_blank" class="btn btn-primary">COLOCAR UM QR CODE AQUI</a>
           </div>
         </div>
@@ -68,7 +68,7 @@
     <div class="col-12 col-md-9">
       <div class="card h-100">
         <div class="card-header bg-light">
-          <h3 class="card-title mb-0 text-center">{{ product.brandName }} {{ product.modelName }} - Digital Passport</h3>
+          <h3 class="card-title mb-0 text-center">{{ product.identification.brandName }} {{ product.identification.modelName }} - Digital Passport</h3>
         </div>
         
         <div class="card-body p-0">
@@ -108,19 +108,19 @@
                       <tbody>
                         <tr>
                           <th width="30%">Brand:</th>
-                          <td class="fw-medium">{{ product.brandName }}</td>
+                          <td class="fw-medium">{{ product.identification.brandName  }}</td>
                         </tr>
                         <tr>
                           <th>Model:</th>
-                          <td class="fw-medium">{{ product.modelName }}</td>
+                          <td class="fw-medium">{{ product.identification.modelName }}</td>
                         </tr>
                         <tr>
                           <th>SKU:</th>
-                          <td class="fw-medium">{{ product.sku }}</td>
+                          <td class="fw-medium">{{ product.identification.sku }}</td>
                         </tr>
                         <tr>
                           <th>UPC:</th>
-                          <td class="fw-medium">{{ product.upc }}</td>
+                          <td class="fw-medium">{{ product.identification.upc }}</td>
                         </tr>
                         <tr>
                           <th>Description:</th>

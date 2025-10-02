@@ -2,6 +2,49 @@ let selectedFile = null;
 let currentId = null;
 let stepper = null;
 let uploadedPDF = null;
+const EDIT_FORM_SELECTOR = '#product-form';
+const EDIT_MODAL_SELECTOR = '#product-modal'; 
+
+function lockAllEditFields() {
+  const $f = $(EDIT_FORM_SELECTOR);
+  $f.find('input, select, textarea').prop('disabled', true);
+  $f.find('button[type="submit"]').prop('disabled', true);
+  $f.find('.btn-cancel, [data-bs-dismiss="modal"]').prop('disabled', false);
+
+  $('#browseImgBtn').prop('disabled', true);
+  $('#removeIMG').prop('disabled', true);
+  $('#imageFile').prop('disabled', true);
+  $('body').addClass('readonly');
+
+  $('#browseManualBtn').prop('disabled', true);
+  $('#removePDF').prop('disabled', true);
+  $('#manualFile').prop('disabled', true);
+}
+
+function unlockAllEditFields() {
+  const $f = $(EDIT_FORM_SELECTOR);
+  $f.find('input, select, textarea, button[type="submit"]').prop('disabled', false);
+
+  $('#browseImgBtn').prop('disabled', false);
+  $('#removeIMG').prop('disabled', false);
+  $('#imageFile').prop('disabled', false);
+  $('body').removeClass('readonly');
+
+  $('#browseManualBtn').prop('disabled', false);
+  $('#removePDF').prop('disabled', false);
+  $('#manualFile').prop('disabled', false);
+}
+
+function unlockOnlyEditableFields(paths = []) {
+  const $f = $(EDIT_FORM_SELECTOR);
+  lockAllEditFields();
+
+  paths.forEach(p => {
+    $f.find(`[name="${p}"]`).prop('disabled', false);
+  });
+
+  $f.find('button[type="submit"]').prop('disabled', false);
+}
 
 function fetchProducts(callback) {
   $.ajax({
@@ -22,6 +65,10 @@ function fetchProducts(callback) {
       }
     },
     error: function (xhr) {
+      if (xhr.status === 401) {
+        window.location = '/accounts/login/?next=' + encodeURIComponent(window.location.pathname);
+        return;
+      }
       console.error('Erro ao buscar produtos:', xhr);
       showBootstrapAlert('danger', 'Erro', 'Falha ao carregar produtos');
       if (callback) callback([]);
@@ -41,6 +88,10 @@ function fetchProductById(id, callback) {
       if (callback) callback(response);
     },
     error: function (xhr) {
+      if (xhr.status === 401) {
+        window.location = '/accounts/login/?next=' + encodeURIComponent(window.location.pathname);
+        return;
+      }
       console.error('Erro ao buscar produto:', xhr);
       showBootstrapAlert('danger', 'Erro', 'Produto não encontrado');
       if (callback) callback(null);
@@ -66,6 +117,10 @@ function createProduct(data, callback) {
       }
     },
     error: function (xhr) {
+      if (xhr.status === 401) {
+        window.location = '/accounts/login/?next=' + encodeURIComponent(window.location.pathname);
+        return;
+      }
       const errors = xhr.responseJSON?.errors || xhr.responseJSON;
       const message = errors?.detail || 'Erro ao criar produto';
       showBootstrapAlert('danger', 'Erro', message);
@@ -91,6 +146,10 @@ function updateProduct(id, data, callback) {
       }
     },
     error: function (xhr) {
+      if (xhr.status === 401) {
+        window.location = '/accounts/login/?next=' + encodeURIComponent(window.location.pathname);
+        return;
+      }
       const errors = xhr.responseJSON?.errors || xhr.responseJSON;
       const message = errors?.detail || 'Erro ao atualizar produto';
       showBootstrapAlert('danger', 'Erro', message);
@@ -114,6 +173,10 @@ function deleteProduct(id, callback) {
       }
     },
     error: function (xhr) {
+      if (xhr.status === 401) {
+        window.location = '/accounts/login/?next=' + encodeURIComponent(window.location.pathname);
+        return;
+      }
       const errors = xhr.responseJSON?.errors || xhr.responseJSON;
       const message = errors?.detail || 'Erro ao excluir produto';
       showBootstrapAlert('danger', 'Erro', message);
@@ -136,6 +199,9 @@ function loadProductsGrid() {
     }
 
     products.forEach(p => $grid.append(cardHtml(p)));
+
+    if (typeof rebindProductCardEvents === 'function') rebindProductCardEvents();
+    bindAssociateButtons();
   });
 }
 
@@ -151,6 +217,33 @@ function cardHtml(product) {
   const category = product.identification?.productCategory?.primary || '';
 
   const statusClass = active ? 'bg-success' : 'bg-secondary';
+
+  const canAssociate = window.APP_CONTEXT?.canAssociate === true;
+
+  const canDelete = (window.APP_CONTEXT?.isCompany === true || window.APP_CONTEXT?.isSuperuser === true);
+
+  const productId = (product._id && (product._id.$oid || product._id)) || product.id || '';
+
+  const associateBtn = canAssociate ? `
+    <button
+      class="btn btn-outline-primary px-3 btn-associate-owner"
+      data-product-id="${productId}"
+      title="Associar proprietário">
+      <i class="bx bx-link"></i> <span>Associar</span>
+    </button>
+  ` : '';
+
+  const editBtn = `
+    <button class="btn btn-outline-primary px-3 edit-product-btn" data-id="${id}" title="Editar">
+      <i class="bx bx-edit"></i>
+    </button>
+  `;
+
+  const deleteBtn = canDelete ? `
+    <button class="btn btn-outline-danger px-3 delete-product-btn" data-id="${id}" title="Excluir">
+      <i class="bx bx-trash"></i>
+    </button>
+  ` : '';
 
   return `
     <div class="col-md-6 col-lg-4 mb-4 d-flex">
@@ -174,13 +267,10 @@ function cardHtml(product) {
           <p class="card-text text-muted small mb-3">${desc}</p>
           <div class="d-flex justify-content-between align-items-center border-top pt-3 mt-3">
             <div class="btn-group btn-group-sm" role="group">
-              <button class="btn btn-outline-primary px-3 edit-product-btn" data-id="${id}" title="Editar">
-                <i class="bx bx-edit"></i>
-              </button>
-              <button class="btn btn-outline-danger px-3 delete-product-btn" data-id="${id}" title="Excluir">
-                <i class="bx bx-trash"></i>
-              </button>
+              ${editBtn}
+              ${deleteBtn}
             </div>
+            ${associateBtn}
           </div>
         </div>
       </div>
@@ -775,11 +865,17 @@ function openModal(id = null) {
     fetchProductById(id, function (data) {
       if (data) {
         fillForm(data);
+        applyEditPermissionsSimple(data);
       }
       hideLoader('#product-modal .modal-body');
     });
   } else {
     $('#productFormModalLabel').text('Novo Produto');
+    if (window.APP_CONTEXT?.isCompany || window.APP_CONTEXT?.isSuperuser) {
+      unlockAllEditFields();
+    } else {
+      lockAllEditFields();
+    }
   }
 
   $('#removeImageFlag, #removeManualFlag').remove();
@@ -1022,8 +1118,6 @@ function saveProduct() {
     }
   };
 
-  
-
   formData.append('json', JSON.stringify(payload));
 
   formData.append('removeImage', $('#removeImageFlag').val());
@@ -1049,6 +1143,10 @@ function saveProduct() {
     method,
     processData: false,
     contentType: false,
+    headers: {
+      'X-CSRFToken': getCsrfToken(),
+      'X-Requested-With': 'XMLHttpRequest'
+    },
     data: formData,
     success: function (res) {
       showBootstrapAlert('success', 'Sucesso', 'Produto salvo com sucesso!');
@@ -1056,6 +1154,10 @@ function saveProduct() {
       loadProductsGrid();
     },
     error: function (xhr) {
+      if (xhr.status === 401) {
+        window.location = '/accounts/login/?next=' + encodeURIComponent(window.location.pathname);
+        return;
+      }
       const errors = xhr.responseJSON?.errors || {};
       let firstField = null;
 
@@ -1162,6 +1264,11 @@ function initEvents() {
       $(this).removeClass('is-invalid');
       $(this).next('.invalid-feedback').remove();
     }
+  });
+
+  $('.btn-associate-owner').off('click').on('click', function () {
+    const productId = $(this).data('product-id');
+    openAssociateModal(productId);
   });
 }
 
@@ -1309,7 +1416,115 @@ function initFileUploadArea() {
     });
 }
 
+let associateModal;
+
+function openAssociateModal(productId) {
+  $('#associateProductId').val(productId);
+  $('#associateIdentifier').val('').removeClass('is-invalid');
+  $('#associateFeedback').text('');
+  if (associateModal) associateModal.show();
+}
+
+function initAssociateModal() {
+  const $modalEl = $('#associateModal');
+  if ($modalEl.length === 0) return;
+  associateModal = new bootstrap.Modal($modalEl[0]);
+
+  $('#btnConfirmAssociate').off('click').on('click', function (e) {
+    e.preventDefault();
+
+    const productId = $('#associateProductId').val();
+    const identifier = $('#associateIdentifier').val().trim();
+    const $feedback = $('#associateFeedback');
+
+    if (!identifier) {
+      $('#associateIdentifier').addClass('is-invalid');
+      showBootstrapAlert('danger', 'Erro', 'Informe um NIF ou NISS válido.');
+      return;
+    }
+
+    const $btn = $(this).prop('disabled', true);
+
+    $.ajax({
+      url: `/products/api/products/${productId}/associate-owner/`,
+      type: 'POST',
+      dataType: 'json',
+      headers: {
+        'X-CSRFToken': getCookie('csrftoken'),
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      data: JSON.stringify({ identifier }),
+      success: function (data, status, xhr) {
+        if (!data || data.success === false) {
+          const detail = (data && (data.detail || data.error)) || 'Não foi possível associar.';
+          $feedback.text(detail);
+          if (typeof showBootstrapAlert === 'function') {
+            showBootstrapAlert('danger', 'Erro', detail);
+          }
+          return;
+        }
+
+        if (typeof showBootstrapAlert === 'function') {
+          showBootstrapAlert('success', 'Sucesso', 'Proprietário associado com sucesso!');
+        }
+        associateModal.hide();
+
+        if (typeof loadProductsGrid === 'function') {
+          loadProductsGrid();
+        }
+      },
+      error: function (xhr) {
+        if (xhr.status === 401) {
+          window.location = '/accounts/login/?next=' + encodeURIComponent(window.location.pathname);
+          return;
+        }
+        const detail = xhr.responseJSON?.detail || 'Erro inesperado ao associar.';
+        $('#associateFeedback').text(detail);
+        if (typeof showBootstrapAlert === 'function') {
+          showBootstrapAlert('danger', 'Erro', detail);
+        }
+      },
+      complete: function () {
+        $btn.prop('disabled', false);
+      }
+    });
+  });
+}
+
+function bindAssociateButtons() {
+  $('.btn-associate-owner').off('click').on('click', function () {
+    const productId = $(this).data('product-id');
+    openAssociateModal(productId);
+  });
+}
+
+function applyEditPermissionsSimple(product) {
+  const isCompany = window.APP_CONTEXT?.isCompany === true;
+  const isSuperuser = window.APP_CONTEXT?.isSuperuser === true;
+  const userId = (window.APP_CONTEXT?.userId || '').toString();
+  const ownerId = (product?.ownerUserId || '').toString();
+
+  if (isCompany || isSuperuser) {
+    unlockAllEditFields();
+    return;
+  }
+
+  lockAllEditFields();
+  if (userId && ownerId && userId === ownerId) {
+    lockAllEditFields();
+    $('#identification_brandName').prop('disabled', false);
+    $('#identification_modelName').prop('disabled', false);
+    $('#btnSubmitForm').prop('disabled', false);
+
+    $('#browseImgBtn, #removeIMG, #imageFile').prop('disabled', true);
+    $('#browseManualBtn, #removePDF, #manualFile').prop('disabled', true);
+  }
+}
+
+
 $(document).ready(function () {
   initEvents();
   loadProductsGrid();
+  initAssociateModal();
 });

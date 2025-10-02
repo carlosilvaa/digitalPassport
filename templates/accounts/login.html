@@ -1,0 +1,45 @@
+{% extends layout_path %}
+{% load static i18n %}
+
+{% block title %}{% trans "Entrar" %}{% endblock %}
+{% block vendor_css %}{{ block.super }}{% endblock %}
+{% block page_css %}{{ block.super }}{% endblock %}
+{% block vendor_js %}{{ block.super }}{% endblock %}
+
+{% block page_js %}
+  {{ block.super }}
+  <script src="{% static 'accounts/js/accounts.js' %}"></script>
+{% endblock %}
+
+
+{% block content %}
+<div class="container-xxl d-flex align-items-center justify-content-center" style="min-height: 100vh;">
+  <div class="col-12 col-md-6 col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <h4 class="fw-bold mb-3">{% trans "Entrar" %}</h4>
+
+        <form id="login-form" method="post" novalidate>
+          {% csrf_token %}
+          <div class="mb-3">
+            <label class="form-label">{% trans "E-mail" %}</label>
+            <input type="email" name="email" class="form-control {% if errors.email %}is-invalid{% endif %}" value="{{ email|default:'' }}" required autofocus>
+            {% if errors.email %}<div class="invalid-feedback">{{ errors.email }}</div>{% endif %}
+          </div>
+          <div class="mb-3">
+            <label class="form-label">{% trans "Palavra-passe" %}</label>
+            <input type="password" name="password" class="form-control {% if errors.password %}is-invalid{% endif %}" required>
+            {% if errors.password %}<div class="invalid-feedback">{{ errors.password }}</div>{% endif %}
+          </div>
+          <button type="submit" class="btn btn-primary w-100"><i class="bx bx-log-in me-1"></i> {% trans "Entrar" %}</button>
+        </form>
+
+        <div class="text-center mt-3">
+          <a href="{% url 'accounts_register' %}">{% trans "Criar conta" %}</a>
+        </div>
+      </div>
+    </div>
+    <p class="text-center text-muted mt-3 small">© Digital Passport</p>
+  </div>
+</div>
+{% endblock %}

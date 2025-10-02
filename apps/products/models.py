@@ -3,7 +3,11 @@ from mongoengine import (
     DynamicDocument, EmbeddedDocument, EmbeddedDocumentField, StringField, BooleanField,
     FloatField, IntField, ListField, URLField, DateField, FileField, DateTimeField
 )
-from datetime import datetime
+
+from datetime import datetime, timezone
+
+def now_utc():
+    return datetime.now(timezone.utc)
 
 class ProductCategory(EmbeddedDocument):
     primary = StringField(null=True)
@@ -111,5 +115,10 @@ class Products(DynamicDocument):
     imageFile = FileField(null=True)
     description = StringField(null=True)
     imageUrl = URLField(null=True)
-    createdAt = DateTimeField(default=datetime.utcnow)
+    createdAt = DateTimeField(default=now_utc)
+    updatedAt = DateTimeField(default=now_utc)
+    createdById = StringField(null=True)
+    updatedById = StringField(null=True)
+    ownerUserId = StringField(null=True)
+    companyUserId = StringField(null=True)
     meta = {'collection': 'products'}
