@@ -13,6 +13,27 @@ function getCookie(name) {
   return cookieValue;
 }
 
+function getCsrfToken() {
+  return getCookie('csrftoken') ||
+         (document.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '');
+}
+
+$.ajaxSetup({
+  beforeSend: function (xhr, settings) {
+    const method = (settings.type || settings.method || 'GET').toUpperCase();
+    const isSafe = /^(GET|HEAD|OPTIONS|TRACE)$/.test(method);
+    if (!isSafe) {
+      const token = getCsrfToken();
+      if (token) xhr.setRequestHeader('X-CSRFToken', token);
+      xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+    }
+    // garantir cookies de sessão sempre
+    settings.xhrFields = settings.xhrFields || {};
+    settings.xhrFields.withCredentials = true;
+  }
+});
+
+
 function showBootstrapAlert(type, title, message, autoClose = 5000) {
   const $alertDiv = $(`
     <div class="alert alert-${type} alert-dismissible fade show" role="alert">

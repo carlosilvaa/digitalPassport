@@ -133,4 +133,7 @@
 .content > .row > .col-12:not(:first-child) {
   margin-top: 1.5rem;
 }
-  
+.readonly #removeIMG,
+.readonly #removePDF {
+  display: none !important;
+}

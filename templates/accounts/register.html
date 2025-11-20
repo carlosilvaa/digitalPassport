@@ -1,0 +1,79 @@
+{% extends layout_path %}
+{% load static i18n %}
+
+{% block title %}{% trans "Criar conta" %}{% endblock %}
+{% block vendor_css %}{{ block.super }}{% endblock %}
+{% block page_css %}{{ block.super }}{% endblock %}
+{% block vendor_js %}{{ block.super }}{% endblock %}
+
+{% block page_js %}
+{{ block.super }}
+<script src="{% static 'accounts/js/accounts.js' %}"></script>
+{% endblock %}
+
+{% block content %}
+<div class="container-xxl d-flex align-items-center justify-content-center" style="min-height: 100vh;">
+  <div class="col-12 col-md-8 col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <h4 class="fw-bold mb-2">{% trans "Criar conta" %}</h4>
+        <p class="text-muted mb-4">{% trans "Para utilizadores comuns é obrigatório informar o NIF." %}</p>
+
+        <form id="register-form" method="post" novalidate>
+          {% csrf_token %}
+
+          <div class="mb-3">
+            <label class="form-label">{% trans "Nome completo" %}</label>
+            <input type="text" name="full_name" class="form-control {% if errors.full_name %}is-invalid{% endif %}" value="{{ full_name|default:'' }}" required>
+            {% if errors.full_name %}<div class="invalid-feedback">{{ errors.full_name }}</div>{% endif %}
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">{% trans "E-mail" %}</label>
+            <input type="email" name="email" class="form-control {% if errors.email %}is-invalid{% endif %}" value="{{ email|default:'' }}" required>
+            {% if errors.email %}<div class="invalid-feedback">{{ errors.email }}</div>{% endif %}
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">{% trans "Palavra-passe" %}</label>
+            <input type="password" name="password" class="form-control {% if errors.password %}is-invalid{% endif %}" required>
+            {% if errors.password %}<div class="invalid-feedback">{{ errors.password }}</div>{% endif %}
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">{% trans "Endereço" %}</label>
+            <input type="text" name="address" class="form-control {% if errors.address %}is-invalid{% endif %}" value="{{ address|default:'' }}">
+            {% if errors.address %}<div class="invalid-feedback">{{ errors.address }}</div>{% endif %}
+          </div>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">{% trans "NIF (utilizador)" %}</label>
+              <input type="text" name="nif" class="form-control {% if errors.nif %}is-invalid{% endif %}" value="{{ nif|default:'' }}">
+              {% if errors.nif %}<div class="invalid-feedback">{{ errors.nif }}</div>{% endif %}
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">{% trans "NISS (empresa)" %}</label>
+              <input type="text" name="niss" class="form-control {% if errors.niss %}is-invalid{% endif %}" value="{{ niss|default:'' }}">
+              {% if errors.niss %}<div class="invalid-feedback">{{ errors.niss }}</div>{% endif %}
+            </div>
+          </div>
+
+          <div class="text-muted small mb-3">
+            {% blocktrans %}Preencha <strong>NIF</strong> para utilizador (portador) ou <strong>NISS</strong> para empresa (criadora).{% endblocktrans %}
+          </div>
+
+          <button type="submit" class="btn btn-primary w-100">
+            <i class="bx bx-user-plus me-1"></i> {% trans "Registar" %}
+          </button>
+        </form>
+
+        <div class="text-center mt-3">
+          <a href="{% url 'accounts_login' %}">{% trans "Já tenho conta" %}</a>
+        </div>
+      </div>
+    </div>
+    <p class="text-center text-muted mt-3 small">© Digital Passport</p>
+  </div>
+</div>
+{% endblock %}

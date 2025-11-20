@@ -60,6 +60,15 @@ ALLOWED_HOSTS = ["localhost", "0.0.0.0", "127.0.0.1"]
 # Current DJANGO_ENVIRONMENT
 ENVIRONMENT = os.environ.get("DJANGO_ENVIRONMENT", default="local")
 
+LOGIN_URL = "/accounts/login/"
+LOGIN_REDIRECT_URL = "/products/"
+LOGOUT_REDIRECT_URL = "/accounts/login/"
+
+SESSION_COOKIE_AGE = 2 * 60 * 60  # 2h
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+SESSION_SAVE_EVERY_REQUEST = True  # renova expiração a cada request
+
+CSRF_COOKIE_HTTPONLY = False  # o JS precisa ler o cookie para enviar o cabeçalho
 
 # Application definition
 
@@ -72,8 +81,19 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "apps.home",
     "apps.products",
+    "apps.accounts",
+    "rest_framework",
 
 ]
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+}
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
