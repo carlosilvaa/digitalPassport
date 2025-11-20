@@ -27,20 +27,87 @@
 
 {% block page_js %}
 {{ block.super }}
-<script src="{% static 'home/js/conveyor-passport.js' %}"></script>
 <script>
-  // Pass product data to JavaScript
+  // Dados crus vindos do serializer (JSON válido)
+  const api = {{ product_json|safe }};
+
+  // Monta o shape que o front espera (sem nada fixo; “Dado não fornecido” é tratado no JS)
   const productData = {
-    id: '{{ product.id }}',
-    brandName: '{{ product.identification.brandName  }}',
-    modelName: '{{ product.modelName }}',
-    description: '{{ product.description }}',
-    imageUrl: '{{ product.imageUrl }}',
-    features: {{ product.features|safe }},
-    dppUrl: '{{ product.dppUrl }}'
+    id: api.id,
+    identification: api.identification,
+    technicalSpecifications: api.technicalSpecifications,
+
+    // Production Data (mapeado de productionData.manufacturing)
+    production: (api.productionData && api.productionData.manufacturing) ? {
+      address: api.productionData.manufacturing.location,
+      city: api.productionData.manufacturing.city,
+      country: api.productionData.manufacturing.country,
+      date: api.productionData.manufacturing.productionDate,
+      extraInfo: api.productionData.manufacturing.productionReport,
+      geo: api.productionData.manufacturing.geo || null  // se um dia você salvar lat/lng aqui
+    } : {},
+
+    // End of Life (Sustainability + ProductLifecycle)
+    endOfLife: {
+      // sustentabilidade
+      recycling: api.sustainability?.recycling?.recyclabilityPercentage,
+      disassembly: api.sustainability?.disassembly?.instructionsUrl,
+      disposal: api.sustainability?.disposal?.disposalInstructions,
+      reuse: (api.sustainability?.reuse?.componentsReusable || [])?.join(', '),
+
+      // ciclo de vida
+      estimatedLifetime: api.productLifecycle?.estimatedLifetimeHours,
+      maintenanceInterval: api.productLifecycle?.recommendedMaintenanceIntervalDays
+    },
+
+    // Usage Data como veio da API
+    usageData: api.usageData || {},
+
+    // Attachments: separados em Manuals / Warranty / Maintenance / Repair
+    attachments: (function () {
+      const out = { manuals: [], warranty: [], maintenance: [], repair: [] };
+
+      // Manuals / Warranty (documentation)
+      const manualUrl = api.documentation?.instructionManual?.url;
+      if (manualUrl) out.manuals.push({ name: 'Instruction Manual', url: manualUrl });
+      const warrantyUrl = api.documentation?.warranty?.termsUrl;
+      if (warrantyUrl) out.warranty.push({ name: 'Warranty Terms', url: warrantyUrl });
+
+      // Maintenance (usageData.maintenanceHistory[*].attachments[*])
+      (api.usageData?.maintenanceHistory || []).forEach((item, i) => {
+        (item.attachments || []).forEach(att => {
+          if (att?.url) {
+            out.maintenance.push({
+              name: att.filename || `Maintenance attachment #${i+1}`,
+              url: att.url
+            });
+          }
+        });
+      });
+
+      // Repair (usageData.repairHistory[*].attachments[*])
+      (api.usageData?.repairHistory || []).forEach((item, i) => {
+        (item.attachments || []).forEach(att => {
+          if (att?.url) {
+            out.repair.push({
+              name: att.filename || `Repair attachment #${i+1}`,
+              url: att.url
+            });
+          }
+        });
+      });
+
+      return out;
+    })(),
+
+    imageUrl: api.imageUrl,
+    dppUrl: api.dppUrl
   };
 </script>
+
+<script src="{% static 'home/js/conveyor-passport.js' %}"></script>
 {% endblock page_js %}
+
 
 {% block content %}
 
@@ -58,7 +125,12 @@
         <div class="card-body text-center">
           <div class="d-flex flex-column align-items-center gap-3">
             <img src="{{ product.imageUrl }}" alt="{{ product.identification.brandName }} {{ product.identification.modelName }}" class="img-fluid" style="max-width: 200px;">
-            <a href="{{ product.dppUrl }}" target="_blank" class="btn btn-primary">COLOCAR UM QR CODE AQUI</a>
+            {% if product.qr_code %}
+              <div class="mt-3 text-center">
+                <img src="{{ product.qr_code }}" alt="QR Code do produto" width="150">
+                <p class="text-muted small">Escaneie para abrir este produto</p>
+              </div>
+            {% endif %}
           </div>
         </div>
       </div>
@@ -76,22 +148,25 @@
           <div class="nav-wrapper position-relative px-3 pt-3">
             <ul class="nav nav-tabs flex-nowrap overflow-auto py-2" role="tablist" style="scrollbar-width: thin;">
               <li class="nav-item flex-shrink-0">
-                <button type="button" class="nav-link active" role="tab" data-bs-toggle="tab" data-bs-target="#identification" aria-controls="identification" aria-selected="true">Identification</button>
+                <button type="button" class="nav-link active" role="tab" data-bs-toggle="tab" data-bs-target="#identification">Identification</button>
               </li>
               <li class="nav-item flex-shrink-0">
-                <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#technicaldata" aria-controls="technicaldata" aria-selected="false">Technical Data</button>
+                <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#technicaldata">Technical Data</button>
               </li>
               <li class="nav-item flex-shrink-0">
-                <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#productiondata" aria-controls="productiondata" aria-selected="false">Production Data</button>
+                <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#productiondata">Production Data</button>
               </li>
               <li class="nav-item flex-shrink-0">
-                <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#videosystem" aria-controls="videosystem" aria-selected="false">Conveyor Operation</button>
+                <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#endoflife">End of Life</button>
               </li>
               <li class="nav-item flex-shrink-0">
-                <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#operationaldata" aria-controls="operationaldata" aria-selected="false">Operational Data</button>
+                <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#usagedata">Usage Data</button>
               </li>
               <li class="nav-item flex-shrink-0">
-                <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#details" aria-controls="details" aria-selected="false">Other Information</button>
+                <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#operationaldata">Operational Data</button>
+              </li>
+              <li class="nav-item flex-shrink-0">
+                <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#details">Other Information</button>
               </li>
             </ul>
           </div>
@@ -265,12 +340,28 @@
                         </div>
                       </div>
                     </div>
+
+                    <!-- Attachments -->
+                    <div class="accordion-item">
+                      <h2 class="accordion-header" id="headingAttachments">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#attachments" aria-expanded="false" aria-controls="attachments">
+                          Attachments (Manuals, Warranty & Maintenance)
+                        </button>
+                      </h2>
+                      <div id="attachments" class="accordion-collapse collapse" aria-labelledby="headingAttachments" data-bs-parent="#productDescriptionAccordion">
+                        <div class="accordion-body">
+                          <div id="attachments-container">
+                            <p class="text-muted mb-0">Carregando anexos…</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                   </div>
 
                 </div>
               </div>
             </div>
-
 
             <!-- Production Data Tab -->
             <div class="tab-pane fade" id="productiondata" role="tabpanel">
@@ -284,19 +375,23 @@
                           <tbody>
                             <tr>
                               <th width="40%">Manufacturing Location:</th>
-                              <td>Instituto Politécnico de Bragança, 5300-253</td>
+                              <td id="prod_address">Dado não fornecido</td>
                             </tr>
                             <tr>
                               <th>City:</th>
-                              <td>Bragança</td>
+                              <td id="prod_city">Dado não fornecido</td>
                             </tr>
                             <tr>
                               <th>Country:</th>
-                              <td>Portugal</td>
+                              <td id="prod_country">Dado não fornecido</td>
                             </tr>
                             <tr>
                               <th>Production Date:</th>
-                              <td>{{ product.createdAt|date:"d-m-Y" }}</td>
+                              <td id="prod_date">Dado não fornecido</td>
+                            </tr>
+                            <tr>
+                              <th>Additional Info:</th>
+                              <td id="prod_extra">Dado não fornecido</td>
                             </tr>
                           </tbody>
                         </table>
@@ -309,7 +404,7 @@
                   <div class="card h-100 border-0 shadow-none">
                     <div class="card-body">
                       <h5 class="card-title mb-3">Manufacturing Location</h5>
-                      <div id="map" style="height: 250px; border-radius: 6px;"></div>
+                      <div id="map" data-lat="" data-lng="" style="height: 250px; border-radius: 6px;"></div>
                     </div>
                   </div>
                 </div>
@@ -317,17 +412,43 @@
             </div>
 
             <!-- Conveyor Operation Tab -->
-            <div class="tab-pane fade" id="videosystem" role="tabpanel">
+            <div class="tab-pane fade" id="endoflife" role="tabpanel">
               <div class="card border-0 shadow-none">
                 <div class="card-body">
-                  <h5 class="card-title mb-3">Conveyor Operation</h5>
-                  <p class="mb-3">The conveyor's functioning is presented in the following video</p>
-                  <div class="ratio ratio-16x9">
-                    <video controls class="rounded">
-                      <source src="{% static 'home/img/conv_video.mp4' %}" type="video/mp4">
-                      Your browser does not support the video tag.
-                    </video>
+                  <h5 class="card-title mb-3">End of Life</h5>
+                    <div class="row g-3">
+                      <div class="col-12 col-lg-6">
+                        <div class="border rounded p-3 h-100">
+                          <h6 class="mb-3">Sustainability</h6>
+                          <ul class="mb-0">
+                            <li><strong>Recycling:</strong> <span id="eol_recycling">Dado não fornecido</span></li>
+                            <li><strong>Disassembly:</strong> <span id="eol_disassembly">Dado não fornecido</span></li>
+                            <li><strong>Disposal:</strong> <span id="eol_disposal">Dado não fornecido</span></li>
+                            <li><strong>Reuse:</strong> <span id="eol_reuse">Dado não fornecido</span></li>
+                          </ul>
+                        </div>
+                      </div>
+                      <div class="col-12 col-lg-6">
+                        <div class="border rounded p-3 h-100">
+                          <h6 class="mb-3">Product Lifecycle</h6>
+                          <ul class="mb-0">
+                            <li><strong>Estimated Lifetime:</strong> <span id="eol_lifetime">Dado não fornecido</span></li>
+                            <li><strong>Maintenance Interval:</strong> <span id="eol_maint_interval">Dado não fornecido</span></li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="tab-pane fade" id="usagedata" role="tabpanel">
+              <div class="card border-0 shadow-none">
+                <div class="card-body">
+                  <h5 class="card-title mb-3">Usage Data (Maintenance & Repairs)</h5>
+                  <div id="usage_timeline">
                   </div>
+                  <p id="usage_empty" class="text-muted mb-0 d-none">Dado não fornecido</p>
                 </div>
               </div>
             </div>
@@ -413,7 +534,10 @@
                 <div class="card-body text-center">
                   <h5 class="card-title mb-3">Contact Information</h5>
                   <p class="mb-4">More information about the Conveyor Digital Passport:</p>
-                  <p class="fw-medium mb-4">victoria@ipb.pt</p>
+                  <div class="d-flex flex-column align-items-center mb-4">
+                    <p class="fw-medium mb-4">victoria@ipb.pt</p>
+                    <p class="fw-medium mb-4">a65430@alunos.ipb.pt</p>
+                  </div>
                   <div class="d-flex flex-wrap justify-content-center gap-4">
                     <img src="{% static 'home/img/cedri_blue-EN.png' %}" alt="Logo CEDRI" style="height:80px">
                     <img src="{% static 'home/img/logo_ipb.png' %}" alt="Logo IPB" style="height:80px">

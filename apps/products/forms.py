@@ -90,14 +90,66 @@ class ReuseForm(forms.Form):
     refurbishmentPotential = forms.BooleanField(required=False, label="Pode ser Recondicionado?", widget=forms.CheckboxInput())
 
 
-class SustainabilityForm(forms.Form):
-    recycling = RecyclingForm()
-    disassembly = DisassemblyForm()
-    disposal = DisposalForm()
-    reuse = ReuseForm()
-
-
 class ProductsForm(forms.Form):
     description = forms.CharField(required=False, widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}), label="Descrição")
     stock = forms.IntegerField(required=True, min_value=0, widget=forms.NumberInput(attrs={'class': 'form-control'}), label="Estoque")
     imageUrl = forms.URLField(required=False, widget=forms.URLInput(attrs={'class': 'form-control'}), label="URL da Imagem")
+    
+class SustainabilityForm(forms.Form):
+    recycling_isRecyclable = forms.BooleanField(required=False, label="Reciclável")
+    recycling_recyclabilityPercentage = forms.IntegerField(required=False, min_value=0, max_value=100, label="Reciclabilidade (%)")
+    recycling_recyclingInstructionsUrl = forms.URLField(required=False, label="Instruções de Reciclagem (URL)")
+
+    disassembly_timeRequiredMinutes = forms.IntegerField(required=False, label="Tempo p/ Desmontagem (min)")
+    disassembly_difficultyRating = forms.ChoiceField(
+        required=False,
+        choices=[("1","Fácil"),("2","Médio"),("3","Difícil")],
+        label="Dificuldade"
+    )
+    disassembly_instructionsUrl = forms.URLField(required=False, label="Instruções de Desmontagem (URL)")
+    disassembly_toolRequirements = forms.CharField(required=False, label="Ferramentas Necessárias")
+
+    disposal_hazardousComponentsPresent = forms.BooleanField(required=False, label="Possui Componentes Perigosos")
+    disposal_disposalInstructions = forms.CharField(required=False, widget=forms.Textarea(attrs={'rows':2}), label="Instruções de Descarte")
+    disposal_takeBackProgram_isAvailable = forms.BooleanField(required=False, label="Programa de Retorno Disponível")
+    disposal_takeBackProgram_programUrl = forms.URLField(required=False, label="URL do Programa de Retorno")
+
+    reuse_componentsReusable = forms.BooleanField(required=False, label="Componentes Reutilizáveis")
+    reuse_refurbishmentPotential = forms.CharField(required=False, label="Potencial de Refabricação")
+    
+    
+class ManufacturingForm(forms.Form):
+    location = forms.CharField(required=False, label="Location", widget=forms.TextInput(attrs={'class': 'form-control'}))
+    city = forms.CharField(required=False, label="City", widget=forms.TextInput(attrs={'class': 'form-control'}))
+    country = forms.CharField(required=False, label="Country", widget=forms.TextInput(attrs={'class': 'form-control'}))
+    productionDate = forms.DateField(required=False, label="Production Date", widget=forms.DateInput(attrs={'type':'date', 'class': 'form-control'}))
+    productionReport = forms.URLField(required=False, label="Production Report (URL)", widget=forms.URLInput(attrs={'class': 'form-control'}))
+
+
+class ProductionDataForm(forms.Form):
+    manufacturing = ManufacturingForm()
+    
+class ProductLifecycleForm(forms.Form):
+    estimatedLifetimeHours = forms.IntegerField(required=False, label="Vida Útil Estimada (horas)", widget=forms.NumberInput(attrs={'class': 'form-control'}))
+    recommendedMaintenanceIntervalDays = forms.IntegerField(required=False, label="Intervalo de Manutenção Recomendado (dias)", widget=forms.NumberInput(attrs={'class': 'form-control'}))
+    endOfLifeDate = forms.DateField(required=False, label="Data de Fim de Vida", widget=forms.DateInput(attrs={'type':'date', 'class': 'form-control'}))
+    
+
+class ProductForm(forms.Form):
+    identification = IdentificationForm()
+    technicalSpecifications = TechnicalSpecificationsForm()
+    documentation = DocumentationForm()
+    sustainability = SustainabilityForm()
+    productLifecycle = ProductLifecycleForm()
+    productionData = ProductionDataForm()
+    
+class UsageDataForm(forms.Form):
+    environment = forms.CharField(required=False, label="Ambiente de uso")
+    usageFrequency = forms.CharField(required=False, label="Frequência de uso (ex.: diário)")
+    averageUsagePerDay = forms.CharField(required=False, label="Uso médio (ex.: 2h/dia)")
+    lastUsedAt = forms.DateField(required=False, label="Último uso", widget=forms.DateInput(attrs={'type':'date'}))
+    condition = forms.ChoiceField(
+        required=False, label="Condição atual",
+        choices=[("new","New"),("good","Good"),("worn","Worn"),("damaged","Damaged"),("not_working","Not Working")]
+    )
+    notes = forms.CharField(required=False, label="Observações", widget=forms.Textarea(attrs={'rows':2}))

@@ -1,9 +1,18 @@
 let selectedFile = null;
 let currentId = null;
 let stepper = null;
+let associateModal;
 let uploadedPDF = null;
+let stepperCommon = null;
+let currentCommonId = null;
+let usageEntryModal = null;
+let commonModalInst = null;
+let movedDropArea = null;
+let movedDropOwner = null;
+let movedDropWasHidden = false;
+let removeAttachmentIds = new Set();
 const EDIT_FORM_SELECTOR = '#product-form';
-const EDIT_MODAL_SELECTOR = '#product-modal'; 
+const EDIT_MODAL_SELECTOR = '#product-modal';
 
 function lockAllEditFields() {
   const $f = $(EDIT_FORM_SELECTOR);
@@ -99,64 +108,6 @@ function fetchProductById(id, callback) {
   });
 }
 
-function createProduct(data, callback) {
-  $.ajax({
-    url: '/products/api/products/',
-    type: 'POST',
-    contentType: 'application/json',
-    data: JSON.stringify(data),
-    headers: {
-      'X-CSRFToken': getCookie('csrftoken')
-    },
-    success: function (response) {
-      if (response.success) {
-        showBootstrapAlert('success', 'Sucesso', 'Produto criado com sucesso!', 5000);
-        if (callback) callback(response);
-      } else {
-        showBootstrapAlert('danger', 'Erro', response.error || 'Erro ao processar solicitação.');
-      }
-    },
-    error: function (xhr) {
-      if (xhr.status === 401) {
-        window.location = '/accounts/login/?next=' + encodeURIComponent(window.location.pathname);
-        return;
-      }
-      const errors = xhr.responseJSON?.errors || xhr.responseJSON;
-      const message = errors?.detail || 'Erro ao criar produto';
-      showBootstrapAlert('danger', 'Erro', message);
-    }
-  });
-}
-
-function updateProduct(id, data, callback) {
-  $.ajax({
-    url: `/products/api/products/${id}/`,
-    type: 'PUT',
-    contentType: 'application/json',
-    data: JSON.stringify(data),
-    headers: {
-      'X-CSRFToken': getCookie('csrftoken')
-    },
-    success: function (response) {
-      if (response.success) {
-        showBootstrapAlert('success', 'Sucesso', 'Produto atualizado com sucesso!', 5000);
-        if (callback) callback(response);
-      } else {
-        showBootstrapAlert('danger', 'Erro', response.error || 'Erro ao processar solicitação.');
-      }
-    },
-    error: function (xhr) {
-      if (xhr.status === 401) {
-        window.location = '/accounts/login/?next=' + encodeURIComponent(window.location.pathname);
-        return;
-      }
-      const errors = xhr.responseJSON?.errors || xhr.responseJSON;
-      const message = errors?.detail || 'Erro ao atualizar produto';
-      showBootstrapAlert('danger', 'Erro', message);
-    }
-  });
-}
-
 function deleteProduct(id, callback) {
   $.ajax({
     url: `/products/api/products/${id}/`,
@@ -220,18 +171,20 @@ function cardHtml(product) {
 
   const canAssociate = window.APP_CONTEXT?.canAssociate === true;
 
-  const canDelete = (window.APP_CONTEXT?.isCompany === true || window.APP_CONTEXT?.isSuperuser === true);
+  const canDelete = window.APP_CONTEXT?.isSuperuser === true;
 
   const productId = (product._id && (product._id.$oid || product._id)) || product.id || '';
 
-  const associateBtn = canAssociate ? `
+  const associateBtn = canAssociate
+    ? `
     <button
       class="btn btn-outline-primary px-3 btn-associate-owner"
       data-product-id="${productId}"
       title="Associar proprietário">
       <i class="bx bx-link"></i> <span>Associar</span>
     </button>
-  ` : '';
+  `
+    : '';
 
   const editBtn = `
     <button class="btn btn-outline-primary px-3 edit-product-btn" data-id="${id}" title="Editar">
@@ -239,11 +192,13 @@ function cardHtml(product) {
     </button>
   `;
 
-  const deleteBtn = canDelete ? `
+  const deleteBtn = canDelete
+    ? `
     <button class="btn btn-outline-danger px-3 delete-product-btn" data-id="${id}" title="Excluir">
       <i class="bx bx-trash"></i>
     </button>
-  ` : '';
+  `
+    : '';
 
   return `
     <div class="col-md-6 col-lg-4 mb-4 d-flex">
@@ -377,11 +332,19 @@ function fillForm(data) {
   );
 
   // SUSTENTABILIDADE — PRODUCT LIFECYCLE
-  $('#productLifecycle_estimatedLifetimeHours').val(data.productLifecycle?.estimatedLifetimeHours || '');
-  $('#productLifecycle_recommendedMaintenanceIntervalDays').val(
-    data.productLifecycle?.recommendedMaintenanceIntervalDays || ''
-  );
-  $('#productLifecycle_endOfLifeDate').val(data.productLifecycle?.endOfLifeDate || '');
+  $('#id_estimatedLifetimeHours').val(data.productLifecycle?.estimatedLifetimeHours || '');
+  $('#id_recommendedMaintenanceIntervalDays').val(data.productLifecycle?.recommendedMaintenanceIntervalDays || '');
+  $('#id_endOfLifeDate').val(data.productLifecycle?.endOfLifeDate || '');
+
+  $('#productionData_manufacturing_location').val(data?.productionData?.manufacturing?.location || '');
+  $('#productionData_manufacturing_city').val(data?.productionData?.manufacturing?.city || '');
+  $('#productionData_manufacturing_country').val(data?.productionData?.manufacturing?.country || '');
+  $('#productionData_manufacturing_productionDate').val(data?.productionData?.manufacturing?.productionDate || '');
+  $('#productionData_manufacturing_productionReport').val(data?.productionData?.manufacturing?.productionReport || '');
+
+  $('#id_estimatedLifetimeHours').val(data?.productLifecycle?.estimatedLifetimeHours || '');
+  $('#id_recommendedMaintenanceIntervalDays').val(data?.productLifecycle?.recommendedMaintenanceIntervalDays || '');
+  $('#id_endOfLifeDate').val(data?.productLifecycle?.endOfLifeDate || '');
 
   if (data.imageUrl) {
     $('#imageFileList').html(`
@@ -395,11 +358,13 @@ function fillForm(data) {
         </div>
       </div>
     `);
-    $('#removeIMG').off('click').on('click', function () {
-      $('#imageFile').val('');
-      $('#imageFileList').empty();
-      $('#removeImageFlag').val('true');
-    });
+    $('#removeIMG')
+      .off('click')
+      .on('click', function () {
+        $('#imageFile').val('');
+        $('#imageFileList').empty();
+        $('#removeImageFlag').val('true');
+      });
   }
 
   if (data.manualUrl) {
@@ -414,11 +379,13 @@ function fillForm(data) {
         </div>
       </div>
     `);
-    $('#removePDF').off('click').on('click', function () {
-      $('#manualFile').val('');
-      $('#fileList').empty();
-      $('#removeManualFlag').val('true');
-    });
+    $('#removePDF')
+      .off('click')
+      .on('click', function () {
+        $('#manualFile').val('');
+        $('#fileList').empty();
+        $('#removeManualFlag').val('true');
+      });
   }
 }
 
@@ -446,10 +413,6 @@ function openModal(id = null) {
   currentId = id;
 
   if (stepper) {
-    stepper.destroy();
-  }
-
-  if (stepper) {
     try {
       stepper.destroy();
     } catch (e) {}
@@ -463,430 +426,82 @@ function openModal(id = null) {
     { id: 'step-4', title: 'Sustentabilidade', icon: 'bx bx-recycle' }
   ];
 
-  const $stepperHeader = $('#stepper-header').empty();
-  steps.forEach((step, index) => {
-    $stepperHeader.append(`
-      <div class="step" data-target="#${step.id}">
+  const $hdr = $('#stepper-header').empty();
+  steps.forEach((s, i) =>
+    $hdr.append(`
+      <div class="step" data-target="#${s.id}">
         <button type="button" class="step-trigger p-1">
-          <span class="bs-stepper-circle"><i class="${step.icon}"></i></span>
-          <span class="bs-stepper-label d-none d-sm-inline">${step.title}</span>
+          <span class="bs-stepper-circle"><i class="${s.icon}"></i></span>
+          <span class="bs-stepper-label d-none d-sm-inline">${s.title}</span>
         </button>
-      </div>
-      ${index < steps.length - 1 ? '<div class="line"></div>' : ''}
-    `);
-  });
+      </div>${i < steps.length - 1 ? '<div class="line"></div>' : ''}
+    `)
+  );
 
-  const $stepperContent = $('#stepper-content').empty();
+  const $cnt = $('#stepper-content').empty();
+  $cnt.append('<div id="step-1" class="content"></div>');
+  $cnt.append('<div id="step-2" class="content"></div>');
+  $cnt.append('<div id="step-3" class="content"></div>');
+  $cnt.append('<div id="step-4" class="content"></div>');
 
-  // Etapa 1 - Identificação (mais compacta)
-  $stepperContent.append(`
-    <div id="step-1" class="content">
-      <div class="row g-2">
-        <div class="col-12 m-0">
-          <div class="section-title mt-1"><i class="bx bx-id-card me-1"></i> Identificação do Produto</div>
-        </div>
-        <div class="col-md-6 m-0">
-          <label for="identification_brandName" class="form-label">Marca*</label>
-          <input type="text" class="form-control form-control-sm" id="identification_brandName" required>
-        </div>
-        <div class="col-md-6 m-0">
-          <label for="identification_modelName" class="form-label">Modelo*</label>
-          <input type="text" class="form-control form-control-sm" id="identification_modelName" required>
-        </div>
-        <div class="col-md-4 m-0">
-          <label for="identification_sku" class="form-label">SKU</label>
-          <input type="text" class="form-control form-control-sm" id="identification_sku">
-        </div>
-        <div class="col-md-4 m-0">
-          <label for="identification_upc" class="form-label">UPC</label>
-          <input type="text" class="form-control form-control-sm" id="identification_upc">
-        </div>
-        <div class="col-md-4 m-0">
-          <label for="identification_serialNumberPattern" class="form-label">Padrão Série</label>
-          <input type="text" class="form-control form-control-sm" id="identification_serialNumberPattern">
-        </div>
-        <div class="col-md-4 m-0">
-          <label for="identification_productCategory_primary" class="form-label">Categoria Principal</label>
-          <input type="text" class="form-control form-control-sm" id="identification_productCategory_primary">
-        </div>
-        <div class="col-md-4 m-0">
-          <label for="identification_productCategory_secondary" class="form-label">Subcategoria</label>
-          <input type="text" class="form-control form-control-sm" id="identification_productCategory_secondary">
-        </div>
-        <div class="col-md-4 m-0">
-          <label for="identification_productCategory_tertiary" class="form-label">Sub-subcategoria</label>
-          <input type="text" class="form-control form-control-sm" id="identification_productCategory_tertiary">
-        </div>
-      </div>
-    </div>
-  `);
+  showLoader('#product-modal .modal-body', 'Carregando formulário...');
 
-  // Etapa 2 - Especificações Técnicas (com seções destacadas)
-  $stepperContent.append(`
-    <div id="step-2" class="content">
-      <div class="row g-2">
-        <div class="col-12 m-0"> 
-          <div class="section-title mt-1"><i class="bx bxs-bolt me-1"></i> Tensão de Operação</div>
-          <div class="row g-2">
-            <div class="col-md-4 m-0">
-              <label for="technicalSpecifications_operatingVoltage_min" class="form-label">Mínimo (V)</label>
-              <input type="number" step="0.01" class="form-control form-control-sm" id="technicalSpecifications_operatingVoltage_min">
-            </div>
-            <div class="col-md-4 m-0">
-              <label for="technicalSpecifications_operatingVoltage_max" class="form-label">Máximo (V)</label>
-              <input type="number" step="0.01" class="form-control form-control-sm" id="technicalSpecifications_operatingVoltage_max">
-            </div>
-            <div class="col-md-4 m-0">
-              <label for="technicalSpecifications_operatingVoltage_unit" class="form-label">Unidade</label>
-              <input type="text" class="form-control form-control-sm" id="technicalSpecifications_operatingVoltage_unit" value="V">
-            </div>
-          </div>
-        </div>
-        
-        <div class="col-12 m-0"> 
-          <div class="section-title mt-1"><i class="bx bxs-thermometer me-1"></i> Temperatura de Operação</div>
-          <div class="row g-2">
-            <div class="col-md-4 m-0">
-              <label for="technicalSpecifications_operatingTemperature_min" class="form-label">Mínimo (°C)</label>
-              <input type="number" step="0.01" class="form-control form-control-sm" id="technicalSpecifications_operatingTemperature_min">
-            </div>
-            <div class="col-md-4 m-0">
-              <label for="technicalSpecifications_operatingTemperature_max" class="form-label">Máximo (°C)</label>
-              <input type="number" step="0.01" class="form-control form-control-sm" id="technicalSpecifications_operatingTemperature_max">
-            </div>
-            <div class="col-md-4 m-0">
-              <label for="technicalSpecifications_operatingTemperature_unit" class="form-label">Unidade</label>
-              <input type="text" class="form-control form-control-sm" id="technicalSpecifications_operatingTemperature_unit" value="°C">
-            </div>
-          </div>
-        </div>
-        
-        <div class="col-12 m-0">  
-          <div class="section-title mt-1"><i class="bx bx-battery me-1"></i> Consumo de Energia</div>
-          <div class="row g-2">
-            <div class="col-md-4 m-0">
-              <label for="technicalSpecifications_powerConsumption_standby" class="form-label">Standby (W)</label>
-              <input type="number" step="0.01" class="form-control form-control-sm" id="technicalSpecifications_powerConsumption_standby">
-            </div>
-            <div class="col-md-4 m-0">
-              <label for="technicalSpecifications_powerConsumption_active" class="form-label">Ativo (W)</label>
-              <input type="number" step="0.01" class="form-control form-control-sm" id="technicalSpecifications_powerConsumption_active">
-            </div>
-            <div class="col-md-4 m-0">
-              <label for="technicalSpecifications_powerConsumption_unit" class="form-label">Unidade</label>
-              <input type="text" class="form-control form-control-sm" id="technicalSpecifications_powerConsumption_unit" value="W">
-            </div>
-          </div>
-        </div>
-        
-        <div class="col-12 m-0"> 
-          <div class="section-title mt-1"><i class="bx bx-ruler me-1"></i> Dimensões</div>
-          <div class="row g-2">
-            <div class="col-md-3 m-0">
-              <label for="technicalSpecifications_dimensions_length" class="form-label">Comprimento</label>
-              <input type="number" step="0.01" class="form-control form-control-sm" id="technicalSpecifications_dimensions_length">
-            </div>
-            <div class="col-md-3 m-0">
-              <label for="technicalSpecifications_dimensions_width" class="form-label">Largura</label>
-              <input type="number" step="0.01" class="form-control form-control-sm" id="technicalSpecifications_dimensions_width">
-            </div>
-            <div class="col-md-3 m-0">
-              <label for="technicalSpecifications_dimensions_height" class="form-label">Altura</label>
-              <input type="number" step="0.01" class="form-control form-control-sm" id="technicalSpecifications_dimensions_height">
-            </div>
-            <div class="col-md-3 m-0">
-              <label for="technicalSpecifications_dimensions_unit" class="form-label">Unidade</label>
-              <input type="text" class="form-control form-control-sm" id="technicalSpecifications_dimensions_unit" value="mm">
-            </div>
-          </div>
-        </div>
-        
-        <div class="col-12 m-0"> 
-          <div class="section-title mt-1"><i class="bx bx-dumbbell me-1"></i> Peso</div>
-          <div class="row g-2">
-            <div class="col-md-6 m-0">
-              <label for="technicalSpecifications_weight_value" class="form-label">Valor</label>
-              <input type="number" step="0.01" class="form-control form-control-sm" id="technicalSpecifications_weight_value">
-            </div>
-            <div class="col-md-6 m-0">
-              <label for="technicalSpecifications_weight_unit" class="form-label">Unidade</label>
-              <input type="text" class="form-control form-control-sm" id="technicalSpecifications_weight_unit" value="g">
-            </div>
-          </div>
-        </div>
-        
-        <div class="col-md-6 m-0">
-          <div class="section-title mt-1"><i class="bx bx-shield me-1"></i> Classificação IP</div>
-          <input type="text" class="form-control form-control-sm" id="technicalSpecifications_ipRating">
-        </div>
-        <div class="col-md-6 m-0">
-          <div class="section-title mt-1">
-            <i class="bx bx-certification me-1"></i> Normas de Conformidade
-            <i class="bx bx-info-circle text-muted"
-              style="cursor:pointer"
-              data-bs-toggle="tooltip"
-              data-bs-placement="top"
-              title="Separe múltiplas normas por vírgulas. Ex.: “CE, RoHS, ISO 9001”"></i></div>
-          <input type="text" class="form-control form-control-sm" id="technicalSpecifications_compliance">
-        </div>
+  $.getJSON('/products/api/products/form/admin/', function (resp) {
+    const tabs = resp?.tabs || {};
+    if (tabs['step-1']) $('#step-1').html(tabs['step-1']);
+    if (tabs['step-2']) $('#step-2').html(tabs['step-2']);
+    if (tabs['step-3']) $('#step-3').html(tabs['step-3']);
+    if (tabs['step-4']) $('#step-4').html(tabs['step-4']);
 
-        
-        <div class="col-12 m-0"> 
-          <div class="section-title mt-1"><i class="bx bx-chip me-1"></i> Especificações Adicionais</div>
-          <div class="row g-2">
-            <div class="col-md-4 m-0">
-              <label for="technicalSpecifications_additionalSpecs_sensorType" class="form-label">Tipo de Sensor</label>
-              <input type="text" class="form-control form-control-sm" id="technicalSpecifications_additionalSpecs_sensorType">
-            </div>
-            <div class="col-md-4 m-0">
-              <label for="technicalSpecifications_additionalSpecs_accuracy" class="form-label">Precisão</label>
-              <input type="text" class="form-control form-control-sm" id="technicalSpecifications_additionalSpecs_accuracy">
-            </div>
-            <div class="col-md-4 m-0">
-              <label for="technicalSpecifications_additionalSpecs_calibrationInterval" class="form-label">Intervalo de Calibração (dias)</label>
-              <input type="number" class="form-control form-control-sm" id="technicalSpecifications_additionalSpecs_calibrationInterval">
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  `);
-
-  // Etapa 3 - Detalhes (mais compacta)
-  $stepperContent.append(`
-    <div id="step-3" class="content">
-      <div class="row g-2">
-        <div class="col-12">
-          <div class="section-title mt-1"><i class="bx bx-detail me-1"></i> Descrição Geral</div>
-        </div>
-        <div class="col-md-6">
-          <label for="description" class="form-label">Descrição</label>
-          <textarea class="form-control form-control-sm" id="description" rows="11"></textarea>
-        </div>
-
-        <div class="col-md-6">
-          <label class="form-label">Imagem do Produto (PNG/JPG/WEBP · até 5 MB)</label>
-          <div class="file-drop-area mb-4">
-            <div class="file-drop-area-content py-5 px-3 text-center border-2 rounded border-dashed" id="imgDropZone">
-              <i class="bx bx-cloud-upload display-4 text-muted"></i>
-              <h5 class="mb-1">Arraste e solte a imagem aqui</h5>
-              <p class="text-muted mb-2">ou</p>
-              <button type="button" class="btn btn-primary mb-3" id="browseImgBtn">
-                <i class="bx bx-search-alt"></i> Selecione a imagem
-              </button>
-              <input type="file" class="file-input" id="imageFile" accept=".png,.jpg,.jpeg,.webp" hidden>
-              <div class="file-list mt-3" id="imageFileList"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  `);
-
-  // Etapa 4 - Sustentabilidade + Vida Útil do Produto
-  $stepperContent.append(`
-    <div id="step-4" class="content">
-      <div class="row g-2">
-
-        <div class="col-12 m-0">
-          <div class="section-title mt-1"><i class="bx bx-recycle me-1"></i> Reciclagem</div>
-        </div>
-        <div class="col-md-12 m-0">
-          <div class="form-check mt-4">
-            <input class="form-check-input" type="checkbox" id="sustainability_recycling_isRecyclable">
-            <label class="form-check-label" for="sustainability_recycling_isRecyclable">
-              É reciclável?
-            </label>
-          </div>
-        </div>
-
-        <div class="col-md-6 m-0">
-          <label for="sustainability_recycling_recyclabilityPercentage" class="form-label">Reciclabilidade (%)</label>
-          <input type="number" step="0.01" class="form-control form-control-sm" id="sustainability_recycling_recyclabilityPercentage">
-        </div>
-        <div class="col-6 m-0">
-          <label for="sustainability_recycling_recyclingInstructions" class="form-label">Instruções de Reciclagem</label>
-          <textarea class="form-control form-control-sm"  id="sustainability_recycling_recyclingInstructions"></textarea>
-        </div>
-
-        <div class="col-12 m-0">
-          <div class="section-title mt-1"><i class="bx bx-wrench me-1"></i> Desmontagem</div>
-        </div>
-        <div class="col-md-12 m-0">
-          <label for="sustainability_disassembly_instructions" class="form-label">Instruções de Desmontagem</label>
-          <textarea  class="form-control form-control-sm" id="sustainability_disassembly_instructions"></textarea
-        </div>
-
-        <div class="col-12 m-0">
-          <div class="section-title mt-1"><i class="bx bx-trash-alt me-1"></i> Descarte</div>
-        </div>
-
-        <div class="row g-2">
-          <div class="col-md-6 m-0">
-            <div class="form-check mt-4">
-              <input class="form-check-input" type="checkbox" id="sustainability_disposal_hazardousComponentsPresent">
-              <label class="form-check-label" for="sustainability_disposal_hazardousComponentsPresent">
-                Contém materiais perigosos?
-              </label>
-            </div>
-          </div>
-
-          <div class="col-md-6 m-0">
-            <div class="form-check mt-4">
-              <input class="form-check-input" type="checkbox" id="sustainability_disposal_takeBackProgram_isAvailable">
-              <label class="form-check-label" for="sustainability_disposal_takeBackProgram_isAvailable">
-                Programa de Retorno Disponível?
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <div class="col-12 m-0">
-          <label for="sustainability_disposal_disposalInstructions" class="form-label">Instruções de Descarte</label>
-          <textarea class="form-control form-control-sm" id="sustainability_disposal_disposalInstructions" rows="2"></textarea>
-        </div>
-
-        <div class="col-12 m-0">
-          <div class="section-title mt-1"><i class="bx bx-repost me-1"></i> Reutilização</div>
-        </div>
-        <div class="col-md-6 m-0">
-          <div class="form-check mt-4">
-            <input class="form-check-input" type="checkbox" id="sustainability_reuse_refurbishmentPotential">
-            <label class="form-check-label" for="sustainability_reuse_refurbishmentPotential">
-              Pode ser recondicionado?
-            </label>
-          </div>
-        </div>
-        <div class="col-md-12 m-0">
-          <label for="sustainability_reuse_componentsReusable" class="form-label d-inline-flex align-items-center gap-1">
-            <span>Componentes Reutilizáveis</span>
-            <i class="bx bx-info-circle text-muted"
-              style="cursor:pointer"
-              data-bs-toggle="tooltip"
-              data-bs-placement="top"
-              title="Separe os itens por vírgulas. Ex.: “sensor, tampa, cabo”"></i>
-          </label>
-          <input type="text" class="form-control form-control-sm" id="sustainability_reuse_componentsReusable">
-        </div>
-        
-
-        <div class="col-12 m-0">
-          <div class="section-title mt-1"><i class="bx bx-time-five me-1"></i> Vida Útil do Produto</div>
-        </div>
-        <div class="row g-2">
-          <div class="col-md-4 m-0">
-            <label for="productLifecycle_estimatedLifetimeHours" class="form-label">Vida útil estimada (horas)</label>
-            <input type="number" class="form-control form-control-sm" id="productLifecycle_estimatedLifetimeHours">
-          </div>
-          <div class="col-md-4 m-0">
-            <label for="productLifecycle_recommendedMaintenanceIntervalDays" class="form-label">Intervalo de manutenção (dias)</label>
-            <input type="number" class="form-control form-control-sm" id="productLifecycle_recommendedMaintenanceIntervalDays">
-          </div>
-          <div class="col-md-4 m-0">
-            <label for="productLifecycle_endOfLifeDate" class="form-label">Data de fim de vida</label>
-            <input type="date" class="form-control form-control-sm" id="productLifecycle_endOfLifeDate">
-          </div>
-        </div>
-
-        <div class="col-12 m-0">
-          <div class="section-title mt-1"><i class="bx bx-file me-1"></i> Documentação</div>
-        </div>
-
-        <div class="col-md-12 m-0">
-          <label for="documentation_instructionManual_url" class="form-label">Manual de Instruções (URL)</label>
-          <input type="url" class="form-control form-control-sm" id="documentation_instructionManual_url">
-        </div>
-
-        <div class="col-md-12 m-0">
-          <label for="documentation_instructionManual_version" class="form-label">Versão do Manual</label>
-          <input type="text" class="form-control form-control-sm" id="documentation_instructionManual_version">
-        </div>
-
-        <div class="col-12 m-0 mt-2">
-          <label class="form-label">Upload do Manual (PDF)</label>
-          <div class="file-drop-area mb-4">
-            <div class="file-drop-area-content py-5 px-3 text-center border-2 rounded border-dashed" id="dropZone">
-              <i class="bx bx-cloud-upload display-4 text-muted"></i>
-              <h5 class="mb-1">Arraste e solte seu ficheiro aqui</h5>
-              <p class="text-muted mb-2">ou</p>
-              <button type="button" class="btn btn-primary mb-3" id="browseFileBtn">
-                <i class="bx bx-search-alt"></i> Selecione o ficheiro
-              </button>
-              <input type="file" class="file-input" id="manualFile" accept=".pdf" hidden>
-              <div class="file-list mt-3" id="fileList"></div>
-            </div>
-          </div>
-        </div>
-
-
-      </div>
-    </div>
-  `);
-
-  const stepperEl = $('#product-stepper')[0];
-  if (stepper) {
-    try {
-      stepper.destroy();
-    } catch (e) {}
-  }
-  stepper = new Stepper(stepperEl, { linear: false, animation: true });
-
-  initFileUploadArea();
-  updateStepperButtons();
-
-  $('#btnPrevStep')
-    .off('click')
-    .on('click', function () {
-      stepper.previous();
-      updateStepperButtons();
-    });
-
-  $('#btnNextStep').off('click')
-    .on('click', function () {
-      if (validateCurrentStep()) {
-        stepper.next();
-        updateStepperButtons();
+    if (tabs['extra-prod']) {
+      if (!$('#extra-prod').length) {
+        $('#stepper-content').append('<div id="extra-prod" class="content"></div>');
+        $('#stepper-header').append(
+          '<div class="line"></div><div class="step" data-target="#extra-prod"><button type="button" class="step-trigger p-1"><span class="bs-stepper-circle"><i class="bx bxs-factory"></i></span><span class="bs-stepper-label d-none d-sm-inline">Produção</span></button></div>'
+        );
       }
-    });
-
-  // No submit, valide tudo e foque na aba certa
-  $('#btnSubmitForm')
-    .off('click')
-    .on('click', function () {
-      if (validateAllAndFocus()) {
-        saveProduct();
-      }
-    });
-
-  if (id) {
-    $('#productFormModalLabel').text('Editar Produto');
-    showLoader('#product-modal .modal-body', 'Carregando...');
-
-    fetchProductById(id, function (data) {
-      if (data) {
-        fillForm(data);
-        applyEditPermissionsSimple(data);
-      }
-      hideLoader('#product-modal .modal-body');
-    });
-  } else {
-    $('#productFormModalLabel').text('Novo Produto');
-    if (window.APP_CONTEXT?.isCompany || window.APP_CONTEXT?.isSuperuser) {
-      unlockAllEditFields();
-    } else {
-      lockAllEditFields();
+      $('#extra-prod').html(tabs['extra-prod']);
     }
-  }
 
-  $('#removeImageFlag, #removeManualFlag').remove();
-  $('#product-form').append('<input type="hidden" id="removeImageFlag" value="false">');
-  $('#product-form').append('<input type="hidden" id="removeManualFlag" value="false">');
+    stepper = new Stepper($('#product-stepper')[0], { linear: false, animation: true });
 
-  var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-  tooltipTriggerList.forEach(function (el) {
-    new bootstrap.Tooltip(el);
+    $('#product-stepper').off('shown.bs-stepper').on('shown.bs-stepper', updateStepperButtons);
+
+    $('#btnPrevStep')
+      .off('click')
+      .on('click', () => {
+        if (stepper) stepper.previous();
+        updateStepperButtons();
+      });
+    $('#btnNextStep')
+      .off('click')
+      .on('click', () => {
+        if (!validateCurrentStep()) return;
+        if (stepper) stepper.next();
+        updateStepperButtons();
+      });
+    $('#btnSubmitForm')
+      .off('click')
+      .on('click', () => {
+        if (!validateAllAndFocus()) return;
+        saveProduct();
+      });
+
+    initFileUploadArea();
+    updateStepperButtons();
+
+    if (id) {
+      fetchProductById(id, function (data) {
+        if (data) {
+          fillForm(data);
+          applyEditPermissionsSimple(data);
+        }
+        hideLoader('#product-modal .modal-body');
+      });
+    } else {
+      hideLoader('#product-modal .modal-body');
+    }
   });
-
 
   $('#product-modal').modal('show');
 }
@@ -1015,7 +630,6 @@ function saveProduct() {
 
   const formData = new FormData();
 
-  // JSON principal
   const payload = {
     identification: {
       brandName: $('#identification_brandName').val(),
@@ -1032,28 +646,28 @@ function saveProduct() {
     },
     technicalSpecifications: {
       operatingVoltage: {
-        min: parseFloat($('#technicalSpecifications_operatingVoltage_min').val() || '0'),
-        max: parseFloat($('#technicalSpecifications_operatingVoltage_max').val() || '0'),
+        min: Number.parseFloat($('#technicalSpecifications_operatingVoltage_min').val() || '0'),
+        max: Number.parseFloat($('#technicalSpecifications_operatingVoltage_max').val() || '0'),
         unit: $('#technicalSpecifications_operatingVoltage_unit').val()
       },
       operatingTemperature: {
-        min: parseFloat($('#technicalSpecifications_operatingTemperature_min').val() || '0'),
-        max: parseFloat($('#technicalSpecifications_operatingTemperature_max').val() || '0'),
+        min: Number.parseFloat($('#technicalSpecifications_operatingTemperature_min').val() || '0'),
+        max: Number.parseFloat($('#technicalSpecifications_operatingTemperature_max').val() || '0'),
         unit: $('#technicalSpecifications_operatingTemperature_unit').val()
       },
       powerConsumption: {
-        standby: parseFloat($('#technicalSpecifications_powerConsumption_standby').val() || '0'),
-        active: parseFloat($('#technicalSpecifications_powerConsumption_active').val() || '0'),
+        standby: Number.parseFloat($('#technicalSpecifications_powerConsumption_standby').val() || '0'),
+        active: Number.parseFloat($('#technicalSpecifications_powerConsumption_active').val() || '0'),
         unit: $('#technicalSpecifications_powerConsumption_unit').val()
       },
       dimensions: {
-        length: parseFloat($('#technicalSpecifications_dimensions_length').val() || '0'),
-        width: parseFloat($('#technicalSpecifications_dimensions_width').val() || '0'),
-        height: parseFloat($('#technicalSpecifications_dimensions_height').val() || '0'),
+        length: Number.parseFloat($('#technicalSpecifications_dimensions_length').val() || '0'),
+        width: Number.parseFloat($('#technicalSpecifications_dimensions_width').val() || '0'),
+        height: Number.parseFloat($('#technicalSpecifications_dimensions_height').val() || '0'),
         unit: $('#technicalSpecifications_dimensions_unit').val()
       },
       weight: {
-        value: parseFloat($('#technicalSpecifications_weight_value').val() || '0'),
+        value: Number.parseFloat($('#technicalSpecifications_weight_value').val() || '0'),
         unit: $('#technicalSpecifications_weight_unit').val()
       },
       ipRating: $('#technicalSpecifications_ipRating').val(),
@@ -1064,7 +678,9 @@ function saveProduct() {
       additionalSpecs: {
         sensorType: $('#technicalSpecifications_additionalSpecs_sensorType').val(),
         accuracy: $('#technicalSpecifications_additionalSpecs_accuracy').val(),
-        calibrationInterval: parseInt($('#technicalSpecifications_additionalSpecs_calibrationInterval').val() || '0')
+        calibrationInterval: Number.parseInt(
+          $('#technicalSpecifications_additionalSpecs_calibrationInterval').val() || '0'
+        )
       }
     },
     description: $('#description').val(),
@@ -1074,19 +690,19 @@ function saveProduct() {
         version: $('#documentation_instructionManual_version').val()
       },
       warranty: {
-        durationMonths: parseInt($('#documentation_warranty_durationMonths').val() || '0'),
+        durationMonths: Number.parseInt($('#documentation_warranty_durationMonths').val() || '0'),
         termsUrl: $('#documentation_warranty_termsUrl').val()
       }
     },
     sustainability: {
       recycling: {
         isRecyclable: $('#sustainability_recycling_isRecyclable').is(':checked'),
-        recyclabilityPercentage: parseFloat($('#sustainability_recycling_recyclabilityPercentage').val() || '0'),
+        recyclabilityPercentage: Number.parseFloat($('#sustainability_recycling_recyclabilityPercentage').val() || '0'),
         recyclingInstructionsUrl: $('#sustainability_recycling_recyclingInstructionsUrl').val()
       },
       disassembly: {
-        timeRequiredMinutes: parseInt($('#sustainability_disassembly_timeRequiredMinutes').val() || '0'),
-        difficultyRating: parseInt($('#sustainability_disassembly_difficultyRating').val() || '0'),
+        timeRequiredMinutes: Number.parseInt($('#sustainability_disassembly_timeRequiredMinutes').val() || '0'),
+        difficultyRating: Number.parseInt($('#sustainability_disassembly_difficultyRating').val() || '0'),
         instructionsUrl: $('#sustainability_disassembly_instructionsUrl').val(),
         toolRequirements: ($('#sustainability_disassembly_toolRequirements').val() || '')
           .split(',')
@@ -1110,14 +726,26 @@ function saveProduct() {
       }
     },
     productLifecycle: {
-      estimatedLifetimeHours: parseInt($('#productLifecycle_estimatedLifetimeHours').val() || '0'),
-      recommendedMaintenanceIntervalDays: parseInt(
-        $('#productLifecycle_recommendedMaintenanceIntervalDays').val() || '0'
-      ),
-      endOfLifeDate: $('#productLifecycle_endOfLifeDate').val()
+      estimatedLifetimeHours: Number.parseInt($('#id_estimatedLifetimeHours').val() || '0'),
+      recommendedMaintenanceIntervalDays: Number.parseInt($('#id_recommendedMaintenanceIntervalDays').val() || '0'),
+      endOfLifeDate: $('#id_endOfLifeDate').val()
     }
   };
 
+  if ($('#productionData_manufacturing_location').length) {
+    payload.productionData = {
+      manufacturing: {
+        location: $('#productionData_manufacturing_location').val() || null,
+        city: $('#productionData_manufacturing_city').val() || null,
+        country: $('#productionData_manufacturing_country').val() || null,
+        productionDate: $('#productionData_manufacturing_productionDate').val() || null,
+        productionReport: $('#productionData_manufacturing_productionReport').val() || null
+      }
+    };
+  }
+
+  const safeExtraBlocks = typeof extraBlocks === 'object' && extraBlocks ? extraBlocks : {};
+  Object.assign(payload, safeExtraBlocks);
   formData.append('json', JSON.stringify(payload));
 
   formData.append('removeImage', $('#removeImageFlag').val());
@@ -1204,11 +832,6 @@ function saveProduct() {
 function initEvents() {
   $('#btnAddProduct').on('click', () => openModal());
 
-  $(document).on('click', '.edit-product-btn', function () {
-    const id = $(this).data('id');
-    openModal(id);
-  });
-
   $(document).on('click', '.details-btn', function () {
     const id = $(this).data('id');
     window.location.href = `/products/products/${id}/`;
@@ -1241,7 +864,6 @@ function initEvents() {
     saveProduct();
   });
 
-  // Adicionar máscaras para campos específicos
   $(document).on('input', '#identification_sku, #identification_upc', function () {
     this.value = this.value.replace(/[^a-zA-Z0-9]/g, '');
   });
@@ -1250,7 +872,6 @@ function initEvents() {
     this.value = this.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
   });
 
-  // Validação em tempo real para campos obrigatórios
   $(document).on('blur', 'input[required], textarea[required]', function () {
     if (!this.value.trim()) {
       $(this).addClass('is-invalid');
@@ -1267,9 +888,9 @@ function initEvents() {
   });
 
   $('.btn-associate-owner').off('click').on('click', function () {
-    const productId = $(this).data('product-id');
-    openAssociateModal(productId);
-  });
+      const productId = $(this).data('product-id');
+      openAssociateModal(productId);
+    });
 }
 
 function initFileUploadArea() {
@@ -1416,8 +1037,6 @@ function initFileUploadArea() {
     });
 }
 
-let associateModal;
-
 function openAssociateModal(productId) {
   $('#associateProductId').val(productId);
   $('#associateIdentifier').val('').removeClass('is-invalid');
@@ -1430,73 +1049,77 @@ function initAssociateModal() {
   if ($modalEl.length === 0) return;
   associateModal = new bootstrap.Modal($modalEl[0]);
 
-  $('#btnConfirmAssociate').off('click').on('click', function (e) {
-    e.preventDefault();
+  $('#btnConfirmAssociate')
+    .off('click')
+    .on('click', function (e) {
+      e.preventDefault();
 
-    const productId = $('#associateProductId').val();
-    const identifier = $('#associateIdentifier').val().trim();
-    const $feedback = $('#associateFeedback');
+      const productId = $('#associateProductId').val();
+      const identifier = $('#associateIdentifier').val().trim();
+      const $feedback = $('#associateFeedback');
 
-    if (!identifier) {
-      $('#associateIdentifier').addClass('is-invalid');
-      showBootstrapAlert('danger', 'Erro', 'Informe um NIF ou NISS válido.');
-      return;
-    }
+      if (!identifier) {
+        $('#associateIdentifier').addClass('is-invalid');
+        showBootstrapAlert('danger', 'Erro', 'Informe um NIF ou NISS válido.');
+        return;
+      }
 
-    const $btn = $(this).prop('disabled', true);
+      const $btn = $(this).prop('disabled', true);
 
-    $.ajax({
-      url: `/products/api/products/${productId}/associate-owner/`,
-      type: 'POST',
-      dataType: 'json',
-      headers: {
-        'X-CSRFToken': getCookie('csrftoken'),
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      },
-      data: JSON.stringify({ identifier }),
-      success: function (data, status, xhr) {
-        if (!data || data.success === false) {
-          const detail = (data && (data.detail || data.error)) || 'Não foi possível associar.';
-          $feedback.text(detail);
+      $.ajax({
+        url: `/products/api/products/${productId}/associate-owner/`,
+        type: 'POST',
+        dataType: 'json',
+        headers: {
+          'X-CSRFToken': getCookie('csrftoken'),
+          Accept: 'application/json',
+          'Content-Type': 'application/json'
+        },
+        data: JSON.stringify({ identifier }),
+        success: function (data, status, xhr) {
+          if (!data || data.success === false) {
+            const detail = (data && (data.detail || data.error)) || 'Não foi possível associar.';
+            $feedback.text(detail);
+            if (typeof showBootstrapAlert === 'function') {
+              showBootstrapAlert('danger', 'Erro', detail);
+            }
+            return;
+          }
+
+          if (typeof showBootstrapAlert === 'function') {
+            showBootstrapAlert('success', 'Sucesso', 'Proprietário associado com sucesso!');
+          }
+          associateModal.hide();
+
+          if (typeof loadProductsGrid === 'function') {
+            loadProductsGrid();
+          }
+        },
+        error: function (xhr) {
+          if (xhr.status === 401) {
+            window.location = '/accounts/login/?next=' + encodeURIComponent(window.location.pathname);
+            return;
+          }
+          const detail = xhr.responseJSON?.detail || 'Erro inesperado ao associar.';
+          $('#associateFeedback').text(detail);
           if (typeof showBootstrapAlert === 'function') {
             showBootstrapAlert('danger', 'Erro', detail);
           }
-          return;
+        },
+        complete: function () {
+          $btn.prop('disabled', false);
         }
-
-        if (typeof showBootstrapAlert === 'function') {
-          showBootstrapAlert('success', 'Sucesso', 'Proprietário associado com sucesso!');
-        }
-        associateModal.hide();
-
-        if (typeof loadProductsGrid === 'function') {
-          loadProductsGrid();
-        }
-      },
-      error: function (xhr) {
-        if (xhr.status === 401) {
-          window.location = '/accounts/login/?next=' + encodeURIComponent(window.location.pathname);
-          return;
-        }
-        const detail = xhr.responseJSON?.detail || 'Erro inesperado ao associar.';
-        $('#associateFeedback').text(detail);
-        if (typeof showBootstrapAlert === 'function') {
-          showBootstrapAlert('danger', 'Erro', detail);
-        }
-      },
-      complete: function () {
-        $btn.prop('disabled', false);
-      }
+      });
     });
-  });
 }
 
 function bindAssociateButtons() {
-  $('.btn-associate-owner').off('click').on('click', function () {
-    const productId = $(this).data('product-id');
-    openAssociateModal(productId);
-  });
+  $('.btn-associate-owner')
+    .off('click')
+    .on('click', function () {
+      const productId = $(this).data('product-id');
+      openAssociateModal(productId);
+    });
 }
 
 function applyEditPermissionsSimple(product) {
@@ -1522,9 +1145,921 @@ function applyEditPermissionsSimple(product) {
   }
 }
 
+function openCommonModal(id) {
+  currentCommonId = id;
+  removeAttachmentIds = new Set();
+
+  const $hdr = $('#common-stepper-header').empty();
+  const $cnt = $('#common-stepper-content').empty();
+  $cnt.append('<div id="extra-prod" class="content"></div>');
+  $cnt.append('<div id="extra-eol" class="content"></div>');
+
+  $hdr.append(`
+    <div class="step" data-target="#extra-prod">
+      <button type="button" class="step-trigger p-1">
+        <span class="bs-stepper-circle"><i class='bx bx-spreadsheet'></i></span>
+        <span class="bs-stepper-label d-none d-sm-inline">Usage Data</span>
+      </button>
+    </div>
+    <div class="line"></div>
+    <div class="step" data-target="#extra-eol">
+      <button type="button" class="step-trigger p-1">
+        <span class="bs-stepper-circle"><i class="bx bx-time-five"></i></span>
+        <span class="bs-stepper-label d-none d-sm-inline">End of Life</span>
+      </button>
+    </div>
+  `);
+
+  showLoader('#product-common-modal .modal-body', 'Carregando...');
+  $.getJSON('/products/api/products/form/common/', function (resp) {
+    const tabs = resp?.tabs || {};
+    if (tabs['extra-prod']) $('#extra-prod').html(tabs['extra-prod']);
+    if (tabs['extra-eol']) $('#extra-eol').html(tabs['extra-eol']);
+
+    if (tabs['extra-usage']) {
+      if (!$('#extra-usage').length) {
+        $('#product-common-stepper .bs-stepper-content').append('<div id="extra-usage" class="content"></div>');
+        $('#product-common-stepper .bs-stepper-header').append(
+          '<div class="line"></div><div class="step" data-target="#extra-usage">' +
+            '<button type="button" class="step-trigger p-1">' +
+            '<span class="bs-stepper-circle"><i class="bx bx-spreadsheet"></i></span>' +
+            '<span class="bs-stepper-label d-none d-sm-inline">Uso</span>' +
+            '</button></div>'
+        );
+      }
+      $('#extra-usage').html(tabs['extra-usage']);
+    }
+    if (tabs['extra-eol']) {
+      if (!$('#extra-eol').length) {
+        $('#product-common-stepper .bs-stepper-content').append('<div id="extra-eol" class="content"></div>');
+        $('#product-common-stepper .bs-stepper-header').append(
+          '<div class="line"></div><div class="step" data-target="#extra-eol">' +
+            '<button type="button" class="step-trigger p-1">' +
+            '<span class="bs-stepper-circle"><i class="bx bx-time-five"></i></span>' +
+            '<span class="bs-stepper-label d-none d-sm-inline">Fim de Vida</span>' +
+            '</button></div>'
+        );
+      }
+      $('#extra-eol').html(tabs['extra-eol']);
+    }
+
+    stepperCommon = new Stepper($('#product-common-stepper')[0], { linear: false, animation: true });
+
+    $('#product-common-stepper').off('shown.bs-stepper').on('shown.bs-stepper', updateStepperButtonsCommon);
+
+    $('#btnAddMaint')
+      .off('click')
+      .on('click', () => {
+        const idx = $('#maintenance-list .maint-item').length;
+        $('#maintenance-list').append(maintItemTemplate(idx));
+      });
+    $('#btnAddRepair')
+      .off('click')
+      .on('click', () => {
+        const idx = $('#repair-list .repair-item').length;
+        $('#repair-list').append(repairItemTemplate(idx));
+      });
+
+    $(document)
+      .off('click', '.btn-remove-maint')
+      .on('click', '.btn-remove-maint', function () {
+        $(this).closest('.maint-item').remove();
+        renumberUsageItems();
+      });
+    $(document)
+      .off('click', '.btn-remove-repair')
+      .on('click', '.btn-remove-repair', function () {
+        $(this).closest('.repair-item').remove();
+        renumberUsageItems();
+      });
+    $(document)
+      .off('click', '.btn-remove-existing')
+      .on('click', '.btn-remove-existing', function () {
+        const attId = $(this).data('id');
+        if (attId) removeAttachmentIds.add(attId.toString());
+        $(this).closest('.file-item').remove();
+      });
+
+    function renumberUsageItems() {
+      $('#maintenance-list .maint-item').each(function (i) {
+        $(this).attr('data-index', i);
+      });
+      $('#repair-list .repair-item').each(function (i) {
+        $(this).attr('data-index', i);
+      });
+    }
+
+    $('#btnPrevStepCommon')
+      .off('click')
+      .on('click', () => {
+        if (stepperCommon) stepperCommon.previous();
+        updateStepperButtonsCommon();
+      });
+    $('#btnNextStepCommon')
+      .off('click')
+      .on('click', () => {
+        if (stepperCommon) stepperCommon.next();
+        updateStepperButtonsCommon();
+      });
+
+    updateStepperButtonsCommon();
+
+    fetchProductById(id, function (data) {
+      if (data) fillCommonFromData(data); // nova função (abaixo)
+      hideLoader('#product-common-modal .modal-body');
+    });
+  });
+
+  $('#product-common-modal').modal('show');
+}
+
+function initUsageDropAreas() {
+  // Botão "Selecionar"
+  $(document)
+    .off('click', '.browseMaintBtn, .browseRepairBtn')
+    .on('click', '.browseMaintBtn, .browseRepairBtn', function () {
+      $(this).closest('.file-drop-area-content').find('input[type=file]').trigger('click');
+    });
+
+  // Selecionar arquivos
+  $(document)
+    .off('change', '.maint-files, .repair-files')
+    .on('change', '.maint-files, .repair-files', function () {
+      const $list = $(this).closest('.file-drop-area').find('.file-list');
+      $list.empty();
+      Array.from(this.files).forEach(f => {
+        $list.append(`
+          <div class="d-flex justify-content-between align-items-center bg-white p-2 rounded shadow-sm border file-item">
+            <span><i class="bx bx-file me-2"></i>${f.name}</span>
+          </div>
+        `);
+      });
+    });
+
+  // Drag and drop
+  $(document)
+    .off('dragover', '.maint-dropzone, .repair-dropzone')
+    .on('dragover', '.maint-dropzone, .repair-dropzone', function (e) {
+      e.preventDefault();
+      $(this).addClass('bg-light border-primary');
+    })
+    .off('dragleave', '.maint-dropzone, .repair-dropzone')
+    .on('dragleave', '.maint-dropzone, .repair-dropzone', function () {
+      $(this).removeClass('bg-light border-primary');
+    })
+    .off('drop', '.maint-dropzone, .repair-dropzone')
+    .on('drop', '.maint-dropzone, .repair-dropzone', function (e) {
+      e.preventDefault();
+      $(this).removeClass('bg-light border-primary');
+      const files = e.originalEvent.dataTransfer.files;
+      const $input = $(this).find('input[type=file]')[0];
+      $input.files = files;
+      const $list = $(this).closest('.file-drop-area').find('.file-list');
+      $list.empty();
+      Array.from(files).forEach(f => {
+        $list.append(`
+          <div class="d-flex justify-content-between align-items-center bg-white p-2 rounded shadow-sm border file-item">
+            <span><i class="bx bx-file me-2"></i>${f.name}</span>
+          </div>
+        `);
+      });
+    });
+}
+
+function fillCommonFromData(data) {
+  $('#usageData_environment').val(data.usageData?.environment || '');
+  $('#usageData_usageFrequency').val(data.usageData?.usageFrequency || '');
+  $('#usageData_averageUsagePerDay').val(data.usageData?.averageUsagePerDay || '');
+  $('#usageData_lastUsedAt').val(data.usageData?.lastUsedAt || '');
+  $('#usageData_condition').val(data.usageData?.condition || '');
+  $('#usageData_notes').val(data.usageData?.notes || '');
+
+  $('#maintenance-list').empty();
+  (data.usageData?.maintenanceHistory || []).forEach((item, i) => {
+    $('#maintenance-list').append(maintItemTemplate(i, item));
+  });
+
+  $('#repair-list').empty();
+  (data.usageData?.repairHistory || []).forEach((item, i) => {
+    $('#repair-list').append(repairItemTemplate(i, item));
+  });
+
+  $('#productLifecycle_estimatedLifetimeHours').val(data?.productLifecycle?.estimatedLifetimeHours || '');
+  $('#productLifecycle_recommendedMaintenanceIntervalDays').val(
+    data?.productLifecycle?.recommendedMaintenanceIntervalDays || ''
+  );
+  $('#productLifecycle_endOfLifeDate').val(data?.productLifecycle?.endOfLifeDate || '');
+
+  buildUsageAccordionTables(true);
+  renderMaintRepairTables();
+
+}
+
+function updateStepperButtonsCommon() {
+  const s = stepperCommon;
+  if (!s || !Array.isArray(s._steps) || s._steps.length === 0) {
+    $('#btnPrevStepCommon, #btnNextStepCommon, #btnSubmitFormCommon').hide();
+    return;
+  }
+  const cur = typeof s._currentIndex === 'number' ? s._currentIndex : 0;
+  const total = s._steps.length - 1;
+  $('#btnPrevStepCommon').toggle(cur > 0);
+  $('#btnNextStepCommon').toggle(cur < total);
+  $('#btnSubmitFormCommon').toggle(cur === total);
+
+  $('#btnSubmitFormCommon').off('click').on('click', saveCommonModal);
+}
+
+function saveCommonModal() {
+  const id = currentCommonId;
+  if (!id) return;
+
+  const fd = new FormData();
+
+  const payload = {
+    usageData: {
+      environment: $('#usageData_environment').val() || null,
+      usageFrequency: $('#usageData_usageFrequency').val() || null,
+      averageUsagePerDay: $('#usageData_averageUsagePerDay').val() || null,
+      lastUsedAt: $('#usageData_lastUsedAt').val() || null,
+      condition: $('#usageData_condition').val() || null,
+      notes: $('#usageData_notes').val() || null,
+      maintenanceHistory: [],
+      repairHistory: []
+    },
+    productLifecycle: {
+      estimatedLifetimeHours: parseInt($('#productLifecycle_estimatedLifetimeHours').val() || '0', 10) || null,
+      recommendedMaintenanceIntervalDays:
+        parseInt($('#productLifecycle_recommendedMaintenanceIntervalDays').val() || '0', 10) || null,
+      endOfLifeDate: $('#productLifecycle_endOfLifeDate').val() || null
+    }
+  };
+
+  $('#maintenance-list .maint-item').each(function (i) {
+    const card = $(this);
+    payload.usageData.maintenanceHistory.push({
+      date: card.find('.maint-date').val() || null,
+      type: card.find('.maint-type').val() || null,
+      description: card.find('.maint-desc').val() || null,
+      technician: card.find('.maint-tech').val() || null,
+      cost: card.find('.maint-cost').val() ? parseFloat(card.find('.maint-cost').val()) : null
+    });
+    const files = card.find('.maint-files')[0]?.files || [];
+    Array.from(files).forEach((f, j) => {
+      fd.append(`usage_maint_${i}_${j}`, f, f.name);
+    });
+  });
+
+  $('#repair-list .repair-item').each(function (i) {
+    const card = $(this);
+    const warrantyVal = card.find('.repair-warranty').val();
+    let underWarranty = null;
+    if (warrantyVal === 'true') underWarranty = true;
+    if (warrantyVal === 'false') underWarranty = false;
+
+    payload.usageData.repairHistory.push({
+      date: card.find('.repair-date').val() || null,
+      component: card.find('.repair-component').val() || null,
+      description: card.find('.repair-desc').val() || null,
+      vendor: card.find('.repair-vendor').val() || null,
+      cost: card.find('.repair-cost').val() ? parseFloat(card.find('.repair-cost').val()) : null,
+      underWarranty
+    });
+    const files = card.find('.repair-files')[0]?.files || [];
+    Array.from(files).forEach((f, j) => {
+      fd.append(`usage_repair_${i}_${j}`, f, f.name);
+    });
+  });
+
+  fd.append('json', JSON.stringify(payload));
+  fd.append('removeUsageAttachmentIds', JSON.stringify(Array.from(removeAttachmentIds)));
+
+  $.ajax({
+    url: `/products/api/products/${id}/`,
+    method: 'PUT',
+    data: fd,
+    processData: false,
+    contentType: false,
+    headers: { 'X-CSRFToken': getCookie('csrftoken') },
+    success: function () {
+      showBootstrapAlert('success', 'Sucesso', 'Dados salvos com sucesso!');
+      $('#product-common-modal').modal('hide');
+      loadProductsGrid();
+    },
+    error: function (xhr) {
+      showBootstrapAlert('danger', 'Erro ao salvar dados.');
+      console.error(xhr.responseJSON || xhr.responseText);
+    }
+  });
+}
+
+function maintItemTemplate(idx, data = {}) {
+  const atts = (data.attachments || [])
+    .map(
+      a => `
+      <div class="d-flex justify-content-between align-items-center bg-white p-2 rounded shadow-sm border file-item">
+        <span><i class="bx bx-file me-2"></i> ${a.filename || 'Arquivo'}</span>
+        <div class="d-flex gap-2">
+          <a class="btn btn-sm btn-outline-secondary" href="${a.url}" target="_blank">Abrir</a>
+          <button type="button" class="btn btn-sm btn-outline-danger btn-remove-existing" data-id="${a.attachmentId}">
+            <i class="bx bx-x"></i>
+          </button>
+        </div>
+      </div>`
+    )
+    .join('');
+
+  return `
+  <div class="card p-2 maint-item" data-index="${idx}">
+    <div class="row g-2 align-items-end">
+      <div class="col-sm-3"><label class="form-label">Data</label>
+        <input type="date" class="form-control form-control-sm maint-date" value="${data.date || ''}">
+      </div>
+      <div class="col-sm-3"><label class="form-label">Tipo</label>
+        <input type="text" class="form-control form-control-sm maint-type" value="${data.type || ''}">
+      </div>
+      <div class="col-sm-3"><label class="form-label">Técnico</label>
+        <input type="text" class="form-control form-control-sm maint-tech" value="${data.technician || ''}">
+      </div>
+      <div class="col-sm-3"><label class="form-label">Custo</label>
+        <input type="number" step="0.01" class="form-control form-control-sm maint-cost" value="${data.cost ?? ''}">
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Descrição</label>
+        <textarea class="form-control form-control-sm maint-desc" rows="2">${data.description || ''}</textarea>
+      </div>
+
+      <div class="col-12 mt-2">
+        <label class="form-label">Upload (PDF/IMG)</label>
+        <div class="file-drop-area mb-2">
+          <div class="file-drop-area-content py-4 px-3 text-center border-2 rounded border-dashed maint-dropzone">
+            <i class="bx bx-cloud-upload display-6 text-muted"></i>
+            <h6 class="mb-0 small">Arraste arquivos aqui ou clique para selecionar</h6>
+            <p class="text-muted small mb-2">ou</p>
+            <button type="button" class="btn btn-primary btn-sm browseMaintBtn">Selecionar arquivo</button>
+            <input type="file" class="file-input maint-files" multiple accept=".pdf,image/*" hidden>
+          </div>
+          <div class="file-list mt-2">${atts || '<span class="text-muted small">Nenhum arquivo enviado</span>'}</div>
+        </div>
+      </div>
+
+      <div class="col-12 d-flex justify-content-end">
+        <button type="button" class="btn btn-sm btn-outline-danger btn-remove-maint">
+          <i class="bx bx-trash"></i> Remover manutenção
+        </button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function repairItemTemplate(idx, data = {}) {
+  const atts = (data.attachments || [])
+    .map(
+      a => `
+      <div class="d-flex justify-content-between align-items-center bg-white p-2 rounded shadow-sm border file-item">
+        <span><i class="bx bx-file me-2"></i> ${a.filename || 'Arquivo'}</span>
+        <div class="d-flex gap-2">
+          <a class="btn btn-sm btn-outline-secondary" href="${a.url}" target="_blank">Abrir</a>
+          <button type="button" class="btn btn-sm btn-outline-danger btn-remove-existing" data-id="${a.attachmentId}">
+            <i class="bx bx-x"></i>
+          </button>
+        </div>
+      </div>`
+    )
+    .join('');
+
+  return `
+  <div class="card p-2 repair-item" data-index="${idx}">
+    <div class="row g-2 align-items-end">
+      <div class="col-sm-3"><label class="form-label">Data</label>
+        <input type="date" class="form-control form-control-sm repair-date" value="${data.date || ''}">
+      </div>
+      <div class="col-sm-3"><label class="form-label">Componente</label>
+        <input type="text" class="form-control form-control-sm repair-component" value="${data.component || ''}">
+      </div>
+      <div class="col-sm-3"><label class="form-label">Fornecedor</label>
+        <input type="text" class="form-control form-control-sm repair-vendor" value="${data.vendor || ''}">
+      </div>
+      <div class="col-sm-3"><label class="form-label">Custo</label>
+        <input type="number" step="0.01" class="form-control form-control-sm repair-cost" value="${data.cost ?? ''}">
+      </div>
+
+      <div class="col-sm-3"><label class="form-label">Garantia?</label>
+        <select class="form-select form-select-sm repair-warranty">
+          <option value="" ${data.underWarranty == null ? 'selected' : ''}>—</option>
+          <option value="true" ${data.underWarranty === true ? 'selected' : ''}>Sim</option>
+          <option value="false" ${data.underWarranty === false ? 'selected' : ''}>Não</option>
+        </select>
+      </div>
+      <div class="col-sm-9"><label class="form-label">Descrição</label>
+        <textarea class="form-control form-control-sm repair-desc" rows="2">${data.description || ''}</textarea>
+      </div>
+
+
+      <div class="col-sm-12 mt-2">
+        <label class="form-label">Upload (PDF/IMG)</label>
+        <div class="file-drop-area mb-2">
+          <div class="file-drop-area-content py-4 px-3 text-center border-2 rounded border-dashed repair-dropzone">
+            <i class="bx bx-cloud-upload display-6 text-muted"></i>
+            <h6 class="mb-0 small">Arraste arquivos aqui ou clique para selecionar</h6>
+            <p class="text-muted small mb-2">ou</p>
+            <button type="button" class="btn btn-primary btn-sm browseRepairBtn">Selecionar arquivo</button>
+            <input type="file" class="file-input repair-files" multiple accept=".pdf,image/*" hidden>
+          </div>
+          <div class="file-list mt-2">${atts || '<span class="text-muted small">Nenhum arquivo enviado</span>'}</div>
+        </div>
+      </div>
+
+      <div class="col-12 d-flex justify-content-end">
+        <button type="button" class="btn btn-sm btn-outline-danger btn-remove-repair">
+          <i class="bx bx-trash"></i> Remover reparo
+        </button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function ensureUsageEntryModal() {
+  if (!usageEntryModal) {
+    const el = document.getElementById('usageEntryModal');
+    if (el) usageEntryModal = new bootstrap.Modal(el);
+  }
+}
+
+function getCommonModal() {
+  const el = document.getElementById('product-common-modal');
+  commonModalInst = bootstrap.Modal.getOrCreateInstance(el);
+  return commonModalInst;
+}
+
+function gridifyUsageSummary() {
+  const $usageSection = $('#extra-prod');
+}
+
+function buildUsageAccordionTables(forceRebuild = false) {
+  $('#maintenance-list, #repair-list').addClass('visually-hidden');
+
+  if (forceRebuild) $('#maintTableWrap').remove();
+  if (!$('#maintTableWrap').length) {
+    $('#maintenance-list').after(`
+      <div id="maintTableWrap" class="mt-2">
+        <button class="btn btn-sm btn-light border mb-2" type="button"
+                data-bs-toggle="collapse" data-bs-target="#maintTableCollapse" aria-expanded="true">
+          <i class="bx bx-chevron-down me-1"></i> Maintenance History (<span id="maintCount">0</span>)
+        </button>
+        <div class="collapse show" id="maintTableCollapse">
+          <div class="table-responsive">
+            <table class="table table-sm mb-0 align-middle">
+              <thead>
+                <tr>
+                  <th style="width:110px;">Data</th>
+                  <th>Tipo</th>
+                  <th style="width:160px;">Técnico</th>
+                  <th style="width:110px;">Custo</th>
+                  <th style="width:90px;" class="text-center">Anexos</th>
+                  <th style="width:120px;" class="text-end">Ações</th>
+                </tr>
+              </thead>
+              <tbody id="maintTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `);
+  }
+
+  $('#btnAddMaint').off('click._add').on('click._add', () => openUsageEntry('maintenance', null));
+
+  if (forceRebuild) $('#repairTableWrap').remove();
+  if (!$('#repairTableWrap').length) {
+    $('#repair-list').after(`
+      <div id="repairTableWrap" class="mt-2">
+        <button class="btn btn-sm btn-light border mb-2" type="button"
+                data-bs-toggle="collapse" data-bs-target="#repairTableCollapse" aria-expanded="true">
+          <i class="bx bx-chevron-down me-1"></i> Repair History (<span id="repairCount">0</span>)
+        </button>
+        <div class="collapse show" id="repairTableCollapse">
+          <div class="table-responsive">
+            <table class="table table-sm mb-0 align-middle">
+              <thead>
+                <tr>
+                  <th style="width:110px;">Data</th>
+                  <th>Componente</th>
+                  <th style="width:160px;">Fornecedor</th>
+                  <th style="width:110px;">Custo</th>
+                  <th style="width:90px;" class="text-center">Garantia</th>
+                  <th style="width:90px;" class="text-center">Anexos</th>
+                  <th style="width:120px;" class="text-end">Ações</th>
+                </tr>
+              </thead>
+              <tbody id="repairTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `);
+  }
+
+  $('#btnAddRepair').off('click._add').on('click._add', () => openUsageEntry('repair', null));
+}
+
+function renderMaintRepairTables() {
+  const $mb = $('#maintTableBody').empty();
+  const $rb = $('#repairTableBody').empty();
+
+  // === Maintenance rows
+  const maintItems = $('#maintenance-list .maint-item');
+  $('#maintCount').text(maintItems.length);
+  maintItems.each(function (i) {
+    const $it = $(this);
+    const date = $it.find('.maint-date').val() || '-';
+    const type = $it.find('.maint-type').val() || '-';
+    const tech = $it.find('.maint-tech').val() || '-';
+    const cost = $it.find('.maint-cost').val() || '-';
+
+    const existingCount = $it.find('.file-item .btn-remove-existing').length;
+    const newFiles = $it.find('.maint-files')[0]?.files?.length || 0;
+    const totalAtts = existingCount + newFiles;
+
+    $mb.append(`
+      <tr data-kind="maintenance" data-index="${i}">
+        <td>${date}</td>
+        <td>${escapeHtml(type)}</td>
+        <td>${escapeHtml(tech)}</td>
+        <td>${cost !== '-' ? Number(cost) : '-'}</td>
+        <td class="text-center">${totalAtts || 0}</td>
+        <td class="text-end">
+          <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-secondary btn-edit-usage"><i class="bx bx-edit"></i></button>
+            <button class="btn btn-outline-danger btn-del-usage"><i class="bx bx-trash"></i></button>
+          </div>
+        </td>
+      </tr>
+    `);
+  });
+
+  // === Repair rows
+  const repairItems = $('#repair-list .repair-item');
+  $('#repairCount').text(repairItems.length);
+  repairItems.each(function (i) {
+    const $it = $(this);
+    const date = $it.find('.repair-date').val() || '-';
+    const comp = $it.find('.repair-component').val() || '-';
+    const vendor = $it.find('.repair-vendor').val() || '-';
+    const cost = $it.find('.repair-cost').val() || '-';
+    const underW = $it.find('.repair-warranty').val();
+    const warr = underW === 'true' ? 'Sim' : underW === 'false' ? 'Não' : '—';
+
+    const existingCount = $it.find('.file-item .btn-remove-existing').length;
+    const newFiles = $it.find('.repair-files')[0]?.files?.length || 0;
+    const totalAtts = existingCount + newFiles;
+
+    $rb.append(`
+      <tr data-kind="repair" data-index="${i}">
+        <td>${date}</td>
+        <td>${escapeHtml(comp)}</td>
+        <td>${escapeHtml(vendor)}</td>
+        <td>${cost !== '-' ? Number(cost) : '-'}</td>
+        <td class="text-center">${warr}</td>
+        <td class="text-center">${totalAtts || 0}</td>
+        <td class="text-end">
+          <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-secondary btn-edit-usage"><i class="bx bx-edit"></i></button>
+            <button class="btn btn-outline-danger btn-del-usage"><i class="bx bx-trash"></i></button>
+          </div>
+        </td>
+      </tr>
+    `);
+  });
+
+  // Ações
+  $(document).off('click.usageEdit', '.btn-edit-usage').on('click.usageEdit', '.btn-edit-usage', function () {
+      const $tr = $(this).closest('tr');
+      openUsageEntry($tr.data('kind'), parseInt($tr.data('index'), 10));
+    });
+
+  $(document).off('click.usageDel', '.btn-del-usage').on('click.usageDel', '.btn-del-usage', function () {
+      const $tr = $(this).closest('tr');
+      const kind = $tr.data('kind');
+      const idx = parseInt($tr.data('index'), 10);
+
+      if (kind === 'maintenance') {
+        const $item = $('#maintenance-list .maint-item').eq(idx);
+        $item.find('.btn-remove-existing').each(function () {
+          const id = $(this).data('id');
+          if (id) removeAttachmentIds.add(id.toString());
+        });
+        $item.remove();
+      } else {
+        const $item = $('#repair-list .repair-item').eq(idx);
+        $item.find('.btn-remove-existing').each(function () {
+          const id = $(this).data('id');
+          if (id) removeAttachmentIds.add(id.toString());
+        });
+        $item.remove();
+      }
+
+      renumberUsageHiddenLists();
+      renderMaintRepairTables();
+    });
+}
+
+function renumberUsageHiddenLists() {
+  $('#maintenance-list .maint-item').each(function (i) {
+    $(this).attr('data-index', i);
+  });
+  $('#repair-list .repair-item').each(function (i) {
+    $(this).attr('data-index', i);
+  });
+}
+
+function openUsageEntry(kind, indexOrNull) {
+  ensureUsageEntryModal();
+  const common = getCommonModal();
+
+  const isEdit = indexOrNull !== null && indexOrNull !== undefined;
+  $('#usageEntryType').val(kind);
+  $('#usageEntryIndex').val(isEdit ? indexOrNull : '');
+  $('#usageEntryTitle').text((isEdit ? 'Editar ' : 'Adicionar ') + (kind === 'maintenance' ? 'Manutenção' : 'Reparo'));
+
+  $('#ue_date, #ue_type, #ue_component, #ue_technician, #ue_vendor, #ue_cost, #ue_description').val('');
+  $('#ue_warranty').val('');
+  $('#ue_drop_host').empty();
+  movedDropArea = null;
+  movedDropOwner = null;
+
+  if (kind === 'maintenance') {
+    $('#ue_block_maintenance').removeClass('d-none');
+    $('#ue_block_repair_component, #ue_block_vendor, #ue_block_warranty').addClass('d-none');
+    $('#ue_block_technician').removeClass('d-none');
+  } else {
+    $('#ue_block_maintenance').addClass('d-none');
+    $('#ue_block_repair_component, #ue_block_vendor, #ue_block_warranty').removeClass('d-none');
+    $('#ue_block_technician').addClass('d-none');
+  }
+
+  let $it;
+  if (isEdit) {
+    $it = (kind === 'maintenance')
+      ? $('#maintenance-list .maint-item').eq(indexOrNull)
+      : $('#repair-list .repair-item').eq(indexOrNull);
+  } else {
+    if (kind === 'maintenance') {
+      const idx = $('#maintenance-list .maint-item').length;
+      $('#maintenance-list').append(maintItemTemplate(idx, {}));
+      $it = $('#maintenance-list .maint-item').last();
+    } else {
+      const idx = $('#repair-list .repair-item').length;
+      $('#repair-list').append(repairItemTemplate(idx, {}));
+      $it = $('#repair-list .repair-item').last();
+    }
+    $it.attr('data-new', '1');
+  }
+
+  if (kind === 'maintenance') {
+    $('#ue_date').val($it.find('.maint-date').val() || '');
+    $('#ue_type').val($it.find('.maint-type').val() || '');
+    $('#ue_technician').val($it.find('.maint-tech').val() || '');
+    $('#ue_cost').val($it.find('.maint-cost').val() || '');
+    $('#ue_description').val($it.find('.maint-desc').val() || '');
+  } else {
+    $('#ue_date').val($it.find('.repair-date').val() || '');
+    $('#ue_component').val($it.find('.repair-component').val() || '');
+    $('#ue_vendor').val($it.find('.repair-vendor').val() || '');
+    $('#ue_cost').val($it.find('.repair-cost').val() || '');
+    $('#ue_description').val($it.find('.repair-desc').val() || '');
+    $('#ue_warranty').val($it.find('.repair-warranty').val() || '');
+  }
+
+  const $drop = $it.find('.file-drop-area').first();
+  if ($drop.length) {
+    movedDropWasHidden = $drop.hasClass('d-none');
+    movedDropArea = $drop.detach();
+    movedDropOwner = $it;
+    $('#ue_drop_host').append(movedDropArea);
+    movedDropArea.removeClass('d-none'); 
+  }
+
+  common.hide();
+  usageEntryModal.show();
+}
+
+function _trim(v){ 
+  return (v ?? '').toString().trim(); 
+}
+
+function clearUsageEntryValidation() {
+  $('#ue_date, #ue_type, #ue_component, #ue_technician, #ue_vendor, #ue_cost, #ue_warranty, #ue_description')
+    .removeClass('is-invalid')
+    .each(function(){
+      const $n = $(this).next('.invalid-feedback');
+      if ($n.length) $n.text('');
+    });
+}
+
+function validateUsageEntry(kind) {
+  clearUsageEntryValidation();
+
+  const date = _trim($('#ue_date').val());
+  const cost = _trim($('#ue_cost').val());
+  const notes = _trim($('#ue_description').val());
+
+  let hasError = false;
+
+  if (!date) {
+    $('#ue_date').addClass('is-invalid');
+    hasError = true;
+  }
+
+  if (kind === 'maintenance') {
+    const type = _trim($('#ue_type').val());
+    if (!type) {
+      $('#ue_type').addClass('is-invalid');
+      hasError = true;
+    }
+
+    if (hasError) {
+      showBootstrapAlert('danger', 'Preencha os campos obrigatórios da manutenção.','');
+      return { ok: false };
+    }
+    return { ok: true, values: { date, type, tech: _trim($('#ue_technician').val()), cost, notes } };
+
+  } else {
+    const comp = _trim($('#ue_component').val());
+    const vendor = _trim($('#ue_vendor').val());
+    const warranty = $('#ue_warranty').val();
+
+    if (!comp) {
+      $('#ue_component').addClass('is-invalid');
+      hasError = true;
+    }
+
+    if (hasError) {
+      showBootstrapAlert('danger', 'Preencha os campos obrigatórios do reparo.','');
+      return { ok: false };
+    }
+    return { ok: true, values: { date, comp, vendor, cost, notes, warranty } };
+  }
+}
+
+function isHiddenItemEmpty($it, kind){
+  if (kind === 'maintenance'){
+    return !_trim($it.find('.maint-date').val())
+        && !_trim($it.find('.maint-type').val())
+        && !_trim($it.find('.maint-tech').val())
+        && !_trim($it.find('.maint-cost').val())
+        && !_trim($it.find('.maint-desc').val())
+        && !($it.find('.file-item .btn-remove-existing').length)
+        && !($it.find('.maint-files')[0]?.files?.length);
+  } else {
+    return !_trim($it.find('.repair-date').val())
+        && !_trim($it.find('.repair-component').val())
+        && !_trim($it.find('.repair-vendor').val())
+        && !_trim($it.find('.repair-cost').val())
+        && !_trim($it.find('.repair-desc').val())
+        && !_trim($it.find('.repair-warranty').val())
+        && !($it.find('.file-item .btn-remove-existing').length)
+        && !($it.find('.repair-files')[0]?.files?.length);
+  }
+}
+
+$(document).off('click', '#usageEntrySaveBtn').on('click', '#usageEntrySaveBtn', function () {
+  const kind = $('#usageEntryType').val();
+  const idxStr = $('#usageEntryIndex').val();
+  const isEdit = idxStr !== '';
+
+  const res = validateUsageEntry(kind);
+  if (!res.ok){
+    if (!isEdit){
+      const $last = (kind === 'maintenance')
+        ? $('#maintenance-list .maint-item').last()
+        : $('#repair-list .repair-item').last();
+      if ($last.attr('data-new') === '1') $last.remove();
+      renumberUsageHiddenLists();
+      renderMaintRepairTables();
+    }
+    return;
+  }
+
+  let $it;
+  if (isEdit) {
+    const i = parseInt(idxStr, 10);
+    $it = (kind === 'maintenance')
+      ? $('#maintenance-list .maint-item').eq(i)
+      : $('#repair-list .repair-item').eq(i);
+  } else {
+    $it = (kind === 'maintenance')
+      ? $('#maintenance-list .maint-item').last()
+      : $('#repair-list .repair-item').last();
+  }
+
+  if (kind === 'maintenance') {
+    const {date,type,tech,cost,notes} = res.values;
+    $it.find('.maint-date').val(date);
+    $it.find('.maint-type').val(type);
+    $it.find('.maint-tech').val(tech);
+    $it.find('.maint-cost').val(cost);
+    $it.find('.maint-desc').val(notes);
+  } else {
+    const {date,comp,vendor,cost,notes,warranty} = res.values;
+    $it.find('.repair-date').val(date);
+    $it.find('.repair-component').val(comp);
+    $it.find('.repair-vendor').val(vendor);
+    $it.find('.repair-cost').val(cost);
+    $it.find('.repair-desc').val(notes);
+    $it.find('.repair-warranty').val(warranty);
+  }
+
+  if (movedDropArea && movedDropOwner) {
+    movedDropOwner.append(movedDropArea);
+    if (movedDropWasHidden){
+      movedDropArea.addClass('d-none');
+    }else{
+      movedDropArea.removeClass('d-none');
+    }
+    movedDropArea = null;
+    movedDropOwner = null;
+    movedDropWasHidden = false;
+  }
+
+  $it.removeAttr('data-new');
+
+  renumberUsageHiddenLists();
+  renderMaintRepairTables();
+
+  usageEntryModal.hide();
+  getCommonModal().show();
+});
+
+$(document).on('input change', '#usageEntryForm input, #usageEntryForm select, #usageEntryForm textarea', function(){
+  $(this).removeClass('is-invalid');
+  const $n = $(this).next('.invalid-feedback');
+  if ($n.length) $n.text('');
+});
+
+$('#usageEntryModal').off('hidden.bs.modal').on('hidden.bs.modal', function () {
+  if (movedDropArea && movedDropOwner) {
+    movedDropOwner.append(movedDropArea);
+    if (movedDropWasHidden){
+      movedDropArea.addClass('d-none');
+    }else{
+      movedDropArea.removeClass('d-none');
+    }
+    movedDropArea = null;
+    movedDropOwner = null;
+    movedDropWasHidden = false;
+  }
+
+
+  const kind = $('#usageEntryType').val();
+  const idxStr = $('#usageEntryIndex').val();
+  if (idxStr === '') {
+    const $it = (kind === 'maintenance')
+      ? $('#maintenance-list .maint-item').last()
+      : $('#repair-list .repair-item').last();
+    if ($it.attr('data-new') === '1' && isHiddenItemEmpty($it, kind)) {
+      $it.remove();
+      renumberUsageHiddenLists();
+      renderMaintRepairTables();
+    }
+  }
+
+  getCommonModal().show();
+});
+
+function escapeHtml(s) {
+  return (s || '').toString().replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+$('#btnSubmitFormCommon').off('click').on('click', saveCommonModal);
+
+$(document).on('click', '.edit-product-btn', function () {
+  const id = $(this).data('id');
+  const isAdmin = window.APP_CONTEXT?.isCompany === true || window.APP_CONTEXT?.isSuperuser === true;
+  if (isAdmin) {
+    openModal(id);
+    return;
+  }
+
+  fetchProductById(id, function (data) {
+    if (!data) {
+      openModal(id);
+      return;
+    }
+    const ownerId = (data.ownerUserId || '').toString();
+    const uid = (window.APP_CONTEXT?.userId || '').toString();
+    if (uid && ownerId && uid === ownerId) {
+      openCommonModal(id);
+    } else {
+      openModal(id);
+    }
+  });
+});
 
 $(document).ready(function () {
   initEvents();
+  initUsageDropAreas();
   loadProductsGrid();
   initAssociateModal();
 });

@@ -105,20 +105,64 @@ class ProductLifecycle(EmbeddedDocument):
     recommendedMaintenanceIntervalDays = IntField(null=True)
     endOfLifeDate = DateField(null=True)
 
+class ManufacturingDetails(EmbeddedDocument):
+    location = StringField(null=True)          
+    city = StringField(null=True)
+    country = StringField(null=True)
+    productionDate = DateField(null=True)
+    productionReport = URLField(null=True)
+
+class ProductionData(EmbeddedDocument):
+    manufacturing = EmbeddedDocumentField(ManufacturingDetails, null=True)
+    
+class UsageAttachment(EmbeddedDocument):
+    attachmentId = StringField(required=True)
+    file = FileField(null=True) 
+    filename = StringField(null=True)
+    contentType = StringField(null=True)
+    size = IntField(null=True)
+    uploadedAt = DateTimeField(default=now_utc)
+
+class MaintenanceItem(EmbeddedDocument):
+    date = DateField(null=True)
+    type = StringField(null=True)
+    description = StringField(null=True)
+    technician = StringField(null=True)
+    cost = FloatField(null=True)
+    attachments = ListField(EmbeddedDocumentField(UsageAttachment), null=True)
+
+class RepairItem(EmbeddedDocument):
+    date = DateField(null=True)
+    component = StringField(null=True)
+    description = StringField(null=True)
+    vendor = StringField(null=True)
+    cost = FloatField(null=True)
+    underWarranty = BooleanField(null=True)
+    attachments = ListField(EmbeddedDocumentField(UsageAttachment), null=True)
+
+class UsageData(EmbeddedDocument):
+    environment = StringField(null=True)
+    usageFrequency = StringField(null=True)
+    averageUsagePerDay = StringField(null=True)
+    lastUsedAt = DateField(null=True)
+    condition = StringField(null=True, choices=("new","good","worn","damaged","not_working"))
+    notes = StringField(null=True)
+    maintenanceHistory = ListField(EmbeddedDocumentField(MaintenanceItem), null=True)
+    repairHistory = ListField(EmbeddedDocumentField(RepairItem), null=True)
+
+
 class Products(DynamicDocument):
     identification = EmbeddedDocumentField(Identification, required=True)
     technicalSpecifications = EmbeddedDocumentField(TechnicalSpecifications, null=True)
     documentation = EmbeddedDocumentField(Documentation, null=True)
     sustainability = EmbeddedDocumentField(Sustainability, null=True)
     productLifecycle = EmbeddedDocumentField(ProductLifecycle, null=True)
+    productionData = EmbeddedDocumentField(ProductionData, null=True)
+    usageData = EmbeddedDocumentField(UsageData, null=True)
     manualFile = FileField(null=True)
     imageFile = FileField(null=True)
     description = StringField(null=True)
     imageUrl = URLField(null=True)
-    createdAt = DateTimeField(default=now_utc)
-    updatedAt = DateTimeField(default=now_utc)
-    createdById = StringField(null=True)
-    updatedById = StringField(null=True)
-    ownerUserId = StringField(null=True)
-    companyUserId = StringField(null=True)
+    qr_code = URLField(null=True, blank=True)
+    createdAt = DateTimeField(default=datetime.utcnow)
     meta = {'collection': 'products'}
