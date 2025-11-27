@@ -1,0 +1,196 @@
+{% extends layout_path %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{{ product.identification.brandName }} {{ product.identification.modelName }} - Digital Passport (Public){% endblock %}
+
+{% block vendor_css %}
+  {{ block.super }}
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+{% endblock vendor_css %}
+
+{% block page_css %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'home/css/home.css' %}">
+{% endblock page_css %}
+
+{% block vendor_js %}
+  {{ block.super }}
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+{% endblock vendor_js %}
+
+{% block page_js %}
+  {{ block.super }}
+
+  <script>
+    // Mesmo esquema do productDetail: dados crus da API
+    var api = {{ product_json|safe }};
+
+    // Monta o shape que o front espera
+    var productData = {
+      id: api.id,
+      identification: api.identification,
+      technicalSpecifications: api.technicalSpecifications,
+
+      production: (api.productionData && api.productionData.manufacturing) ? {
+        address: api.productionData.manufacturing.location,
+        city: api.productionData.manufacturing.city,
+        country: api.productionData.manufacturing.country,
+        date: api.productionData.manufacturing.productionDate,
+        extraInfo: api.productionData.manufacturing.productionReport,
+        geo: api.productionData.manufacturing.geo || null
+      } : {},
+
+      endOfLife: {
+        recycling: api.sustainability?.recycling?.recyclabilityPercentage,
+        disassembly: api.sustainability?.disassembly?.instructionsUrl,
+        disposal: api.sustainability?.disposal?.disposalInstructions,
+        reuse: (api.sustainability?.reuse?.componentsReusable || [])?.join(', '),
+        estimatedLifetime: api.productLifecycle?.estimatedLifetimeHours,
+        maintenanceInterval: api.productLifecycle?.recommendedMaintenanceIntervalDays
+      },
+
+      usageData: api.usageData || {},
+
+      attachments: (function () {
+        const out = { manuals: [], warranty: [], maintenance: [], repair: [] };
+
+        const manualUrl = api.documentation?.instructionManual?.url;
+        if (manualUrl) out.manuals.push({ name: 'Instruction Manual', url: manualUrl });
+
+        const warrantyUrl = api.documentation?.warranty?.termsUrl;
+        if (warrantyUrl) out.warranty.push({ name: 'Warranty Terms', url: warrantyUrl });
+
+        (api.usageData?.maintenanceHistory || []).forEach((item, i) => {
+          (item.attachments || []).forEach(att => {
+            if (att?.url) {
+              out.maintenance.push({
+                name: att.filename || `Maintenance attachment #${i+1}`,
+                url: att.url
+              });
+            }
+          });
+        });
+
+        (api.usageData?.repairHistory || []).forEach((item, i) => {
+          (item.attachments || []).forEach(att => {
+            if (att?.url) {
+              out.repair.push({
+                name: att.filename || `Repair attachment #${i+1}`,
+                url: att.url
+              });
+            }
+          });
+        });
+
+        return out;
+      })(),
+
+      imageUrl: api.imageUrl,
+      dppUrl: api.dppUrl
+    };
+
+    // Deixa productData disponível globalmente
+    window.productData = productData;
+  </script>
+
+  <script src="{% static 'home/js/conveyor-passport.js' %}"></script>
+{% endblock page_js %}
+
+{% block content %}
+<div class="container-xxl flex-grow-1 container-p-y">
+  <div class="row g-4">
+    <!-- Coluna principal: infos -->
+    <div class="col-12 col-lg-9">
+      <div class="card mb-3">
+        <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-start gap-2">
+          <div>
+            <h4 id="productTitle" class="mb-1">
+              {{ product.identification.brandName }} {{ product.identification.modelName }}
+            </h4>
+            <p id="productSubtitle" class="text-muted mb-1">
+              {{ product.identification.serialNumber }}
+            </p>
+            <span id="currentStatus" class="badge bg-secondary">Status</span>
+          </div>
+          <div class="text-end small text-muted">
+            <span class="d-block">Public Digital Passport</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- aqui você pode reaproveitar os mesmos cards do productDetail: 
+           dados básicos, técnicos, lifecycle, usage, etc. -->
+      <div class="card mb-3">
+        <div class="card-header">
+          <h5 class="mb-0">Informações de Uso</h5>
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-3">
+              <div class="text-muted small">Status de Uso</div>
+              <div id="usageStatus" class="fw-semibold">-</div>
+            </div>
+            <div class="col-md-3">
+              <div class="text-muted small">Carga (%)</div>
+              <div id="usageLoadPercentage" class="fw-semibold">-</div>
+            </div>
+            <div class="col-md-3">
+              <div class="text-muted small">Horas em Operação</div>
+              <div id="usageRunningHours" class="fw-semibold">-</div>
+            </div>
+            <div class="col-md-3">
+              <div class="text-muted small">Última Inspeção</div>
+              <div id="usageLastInspection" class="fw-semibold">-</div>
+            </div>
+          </div>
+
+          <hr class="my-3">
+
+          <div class="row g-3">
+            <div class="col-md-3">
+              <div class="text-muted small">Status Operacional</div>
+              <div id="operationalStatus" class="fw-semibold">-</div>
+            </div>
+            <div class="col-md-3">
+              <div class="text-muted small">Temperatura</div>
+              <div id="operationalTemperature" class="fw-semibold">-</div>
+            </div>
+            <div class="col-md-3">
+              <div class="text-muted small">Vibração</div>
+              <div id="operationalVibration" class="fw-semibold">-</div>
+            </div>
+            <div class="col-md-3">
+              <div class="text-muted small">Consumo de Energia</div>
+              <div id="operationalEnergy" class="fw-semibold">-</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- você pode adicionar mais cards aqui (técnico, sustentabilidade, etc.) -->
+    </div>
+
+    <!-- Coluna lateral: imagem + QRCode -->
+    <div class="col-12 col-lg-3">
+      <div class="card h-100">
+        <div class="card-body text-center">
+          <div class="d-flex flex-column align-items-center gap-3">
+            <img src="{{ product.imageUrl }}"
+                 alt="{{ product.identification.brandName }} {{ product.identification.modelName }}"
+                 class="img-fluid" style="max-width: 200px;">
+
+            <!-- QR gerado pelo JS -->
+            <div id="qrcode" class="mt-3"></div>
+
+            <p class="text-muted small mt-1">Escaneie para abrir este passaporte público</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock content %}

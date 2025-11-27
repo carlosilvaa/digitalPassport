@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from apps.products.models import Products, UsageData, MaintenanceItem, RepairItem, UsageAttachment
 from rest_framework.decorators import action
 from django.http import FileResponse, Http404
-import json, os, mimetypes, qrcode
+import json, os, mimetypes
 from uuid import uuid4
 from django.utils.text import slugify
 from datetime import datetime, timezone
@@ -21,6 +21,7 @@ from django.utils.html import mark_safe
 from apps.products.forms import *
 from django.core.serializers.json import DjangoJSONEncoder
 from django.conf import settings
+from apps.products.services import apply_operational_delta
 
 
 # ---------------- utils já existentes ----------------
@@ -49,7 +50,6 @@ ALLOWED_PARTIAL_SPEC = {
     "productLifecycle": True,
 }
 
-QR_DIR = os.path.join(settings.BASE_DIR, "qrcodes")
 
 def _get_product_or_404(pk: str):
     try:
@@ -76,22 +76,6 @@ def _safe_filename(original_name, content_type):
     stem = slugify(os.path.splitext(original_name)[0]) or "file"
     return f"{stem}-{uuid4().hex}{ext}"
 
-def _qr_disk_path(product_id: str) -> str:
-    return os.path.join(QR_DIR, f"{product_id}.png")
-
-def _product_detail_abs_url(request, product_id: str) -> str:
-    return request.build_absolute_uri(f"/products/products/{product_id}/")
-
-def generate_qr_for_product(request, product):
-    os.makedirs(QR_DIR, exist_ok=True)
-    path = _qr_disk_path(str(product.id))
-
-    target_url = _product_detail_abs_url(request, str(product.id))
-
-    img = qrcode.make(target_url)
-    img.save(path)
-
-    return request.build_absolute_uri(f"/products/api/products/{product.id}/qrcode/")
 # ---------------- sessão/roles ----------------
 
 def _get_current_user_id(request):
@@ -247,7 +231,7 @@ def render_custom_fields(fields_config, title=None, icon=None):
 
 # ---------------- Views ----------------
 
-class ProductsViewSet(viewsets.ViewSet):
+class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
     serializer_class = ProductsSerializer
 
     def list(self, request):
@@ -299,11 +283,6 @@ class ProductsViewSet(viewsets.ViewSet):
                                 status=status.HTTP_400_BAD_REQUEST)
 
             product = serializer.save()
-            try:
-                qr_url = generate_qr_for_product(request, product)
-                product.qr_code = qr_url 
-            except Exception as e:
-                print("Erro ao gerar QR:", e)
 
             product.createdById = str(uid)
             product.updatedById = str(uid)
@@ -995,13 +974,40 @@ class ProductsViewSet(viewsets.ViewSet):
         }
         return Response({'tabs': tabs})
 
+    @action(detail=True, methods=["post"], url_path="operational/update", url_name="operational-update", permission_classes=[],)
+    def operational_update(self, request, pk=None):
+        product = self.get_object()
 
+        delta = request.data.get("data") or {}
+        if not isinstance(delta, dict):
+            return Response(
+                {"error": "`data` must be an object"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        user = request.user if hasattr(request, "user") else None
+        actor_id = str(user.id) if user and user.is_authenticated else None
+        actor_name = user.get_full_name() if user and user.is_authenticated else None
+
+        result = apply_operational_delta(
+            product=product,
+            delta=delta,
+            source="broker",
+            source_channel="mqtt_frontend",
+            actor_id=actor_id,
+            actor_name=actor_name,
+            notes="Delta operacional recebido via ProductsViewSet.operational_update",
+        )
+
+        return Response({
+            "changed": result["changed"],
+            "productId": str(product.id),
+        })
 
 # --------- páginas HTML ---------
 
 @method_decorator(ensure_csrf_cookie, name='dispatch')
 class ProductsViews(LoginRequiredMixin, TemplateView):
-    login_url = "/accounts/login/"
     redirect_field_name = "next"
 
     def get_context_data(self, **kwargs):
@@ -1028,7 +1034,7 @@ class ProductsViews(LoginRequiredMixin, TemplateView):
         return context
 
 
-@login_required(login_url='/login/')
+@login_required
 def product_details(request, product_id):
     product = Products.objects(id=product_id).first()
     if not product:
@@ -1065,15 +1071,22 @@ def product_details(request, product_id):
     context['menu_items'] = get_menu_items(request)
     return render(request, 'productDetail.html', context)
 
-def product_qrcode(request, product_id: str):
-    path = _qr_disk_path(product_id)
-    if not os.path.exists(path):
-        try:
-            target_url = _product_detail_abs_url(request, product_id)
-            os.makedirs(QR_DIR, exist_ok=True)
-            img = qrcode.make(target_url)
-            img.save(path)
-        except Exception:
-            raise Http404("QR Code não encontrado")
+def passport_public(request, product_id):
+    product = Products.objects(id=product_id, identification__isActive=True).first()
+    if not product:
+        return render(request, '404.html', status=404)
 
-    return FileResponse(open(path, "rb"), content_type="image/png")
+    serializer = ProductsSerializer(product)
+    data = serializer.data
+
+    product_json = json.dumps(data, cls=DjangoJSONEncoder)
+
+    context = TemplateLayout.init(request, {
+        'product': data,
+        'product_json': product_json,
+    })
+    context['menu_items'] = []
+
+    context['PUBLIC_MODE'] = True
+
+    return render(request, 'passportPublic.html', context)

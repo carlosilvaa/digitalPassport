@@ -3,8 +3,13 @@ let map;
 
 function initMap() {
   const mapEl = document.getElementById('map');
-  const lat = parseFloat(mapEl?.dataset?.lat) || (productData?.production?.geo?.lat ?? 41.806);
-  const lng = parseFloat(mapEl?.dataset?.lng) || (productData?.production?.geo?.lng ?? -6.757);
+  if (!mapEl) {
+    console.warn('Elemento com id="map" não encontrado. Mapa não será inicializado.');
+    return;
+  }
+
+  const lat = parseFloat(mapEl.dataset.lat) || (productData?.production?.geo?.lat ?? 41.806);
+  const lng = parseFloat(mapEl.dataset.lng) || (productData?.production?.geo?.lng ?? -6.757);
 
   map = L.map('map').setView([lat, lng], 15);
 
@@ -14,252 +19,229 @@ function initMap() {
   }).addTo(map);
 
   const title = productData?.production?.address || 'Manufacturing Location';
-  L.marker([lat, lng]).addTo(map).bindPopup(`<b>${title}</b>`).openPopup();
+  L.marker([lat, lng]).addTo(map)
+    .bindPopup(`<b>${title}</b>`)
+    .openPopup();
 }
 
-$('button[data-bs-target="#productiondata"]').on('shown.bs.tab', function () {
-  if (map) {
-    map.invalidateSize(); // Forçar o Leaflet a recalcular o tamanho do mapa
+function generateQRCode(data) {
+  const qrCodeContainer = document.getElementById('qrcode');
+  if (!qrCodeContainer) {
+    console.warn('Elemento #qrcode não encontrado. QR não será gerado.');
+    return;
   }
-});
 
-function setTextOrDefault(selector, value) {
-  const el = document.querySelector(selector);
-  if (!el) return;
-  el.textContent = value === null || value === undefined || value === '' ? 'Dado não fornecido' : value;
+  qrCodeContainer.innerHTML = "";
+
+  const QR_BASE_PATH = '/products/passport/';
+
+  // teste http://127.0.0.1:8000/products/passport/68d65911e6179110444b78bb/
+
+  const fullUrl = `${window.location.origin}${QR_BASE_PATH}${data.id}/`;
+
+  new QRCode(qrCodeContainer, {
+    text: fullUrl,
+    width: 150,
+    height: 150,
+    colorDark: "#000000",
+    colorLight: "#ffffff",
+    correctLevel: QRCode.CorrectLevel.H
+  });
 }
 
-function renderProduction() {
-  const p = productData.production || {};
-  setTextOrDefault('#prod_address', p.address);
-  setTextOrDefault('#prod_city', p.city);
-  setTextOrDefault('#prod_country', p.country);
-  setTextOrDefault('#prod_date', p.date);
-  setTextOrDefault('#prod_extra', p.extraInfo);
+function formatDate(dateString) {
+  if (!dateString) return "-";
+  const date = new Date(dateString);
+  if (isNaN(date)) return "-";
+  return date.toLocaleDateString("pt-PT", { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-function renderEndOfLife() {
-  const e = productData.endOfLife || {};
-  setTextOrDefault('#eol_recycling', e.recycling);
-  setTextOrDefault('#eol_disassembly', e.disassembly);
-  setTextOrDefault('#eol_disposal', e.disposal);
-  setTextOrDefault('#eol_reuse', e.reuse);
-  setTextOrDefault('#eol_lifetime', e.estimatedLifetime);
-  setTextOrDefault('#eol_maint_interval', e.maintenanceInterval);
+function getStatusBadge(status) {
+  if (!status) return 'bg-secondary';
+  const normalizedStatus = String(status).toLowerCase();
+
+  if (['atuado', 'operacional', 'ativo', 'in operation', 'running'].includes(normalizedStatus)) {
+    return 'bg-success text-white';
+  }
+  if (['parado', 'parado para manutenção', 'stopped', 'maintenance', 'warning'].includes(normalizedStatus)) {
+    return 'bg-warning text-dark';
+  }
+  if (['desativado', 'fora de operação', 'deactivated', 'out_of_service', 'error'].includes(normalizedStatus)) {
+    return 'bg-danger text-white';
+  }
+  return 'bg-secondary text-white';
+}
+
+function renderProductHeader(data) {
+  $('#productTitle').text(data?.identification?.name || 'Product Name');
+  $('#productSubtitle').text(data?.identification?.serialNumber || 'Serial Number Unknown');
+  generateQRCode(data);
+}
+
+function renderBasicInfo(data) {
+  $('#serialNumber').text(data?.identification?.serialNumber || 'N/A');
+  $('#productionDate').text(formatDate(data?.production?.date));
+  $('#manufacturer').text(data?.production?.manufacturer || 'Unknown Manufacturer');
+  $('#productType').text(data?.identification?.type || 'Unknown Type');
+
+  const status = data?.lifecycle?.currentStatus || 'Unknown';
+  const $statusEl = $('#currentStatus');
+  $statusEl
+    .text(status)
+    .removeClass()
+    .addClass(`badge ${getStatusBadge(status)}`);
+}
+
+function renderTechnicalData(data) {
+  const technical = data?.technical || {};
+  $('#ratedPower').text(technical.ratedPower ? `${technical.ratedPower} kW` : 'N/A');
+  $('#beltSpeed').text(technical.beltSpeed ? `${technical.beltSpeed} m/s` : 'N/A');
+  $('#beltCapacity').text(technical.beltCapacity ? `${technical.beltCapacity} t/h` : 'N/A');
+}
+
+function renderLifecycleData(data) {
+  const lifecycle = data?.lifecycle || {};
+  $('#installationDate').text(formatDate(lifecycle.installationDate));
+  $('#expectedEndOfLife').text(formatDate(lifecycle.expectedEndOfLife));
+
+  const status = lifecycle.currentStatus || 'Unknown';
+  const $statusEl = $('#lifecycleStatus');
+  $statusEl
+    .text(status)
+    .removeClass()
+    .addClass(`badge ${getStatusBadge(status)}`);
+}
+
+function renderSustainabilityData(data) {
+  const s = data?.sustainability || {};
+  $('#co2Footprint').text(s.co2Footprint ? `${s.co2Footprint} kg CO₂` : 'N/A');
+  $('#recyclable').text(s.recyclable ? 'Sim' : 'Não');
+  $('#sustainableMaterials').text(s.materials?.join(', ') || 'N/A');
+}
+
+function renderDocuments(data) {
+  const docs = data?.documentation?.documents || [];
+  const $list = $('#documentsList').empty();
+
+  if (!docs.length) {
+    $list.html('<p class="text-muted small mb-0">Nenhum documento anexado.</p>');
+    return;
+  }
+
+  docs.forEach(doc => {
+    const $row = $(`
+      <div class="d-flex justify-content-between align-items-center py-1 border-bottom">
+        <span class="small">${doc.name || 'Documento'}</span>
+        <a href="${doc.url || '#'}" target="_blank" rel="noopener" class="small text-primary">Abrir</a>
+      </div>
+    `);
+    $list.append($row);
+  });
+}
+
+function renderMaintenanceHistory(data) {
+  const history = data?.lifecycle?.maintenanceHistory || [];
+  const $container = $('#maintenanceHistory').empty();
+
+  if (!history.length) {
+    $container.html('<p class="text-muted small mb-0">Nenhuma manutenção registrada.</p>');
+    return;
+  }
+
+  history.forEach(entry => {
+    const $row = $(`
+      <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-light small">
+        <span>${formatDate(entry.date)}</span>
+        <span>${entry.type || 'Manutenção'}</span>
+        <span class="text-muted">${entry.description || ''}</span>
+      </div>
+    `);
+    $container.append($row);
+  });
+}
+
+function updateElementTextContent(selector, value, fallback = 'N/A') {
+  const $el = $(selector);
+  if (!$el.length) return;
+  if (value === null || value === undefined || value === '') {
+    $el.text(fallback);
+  } else {
+    $el.text(value);
+  }
 }
 
 function renderUsageData() {
-  const u = productData.usageData || {};
-  const maint = Array.isArray(u.maintenanceHistory) ? u.maintenanceHistory : [];
-  const repair = Array.isArray(u.repairHistory) ? u.repairHistory : [];
+  if (!productData || !productData.usageData) return;
 
-  const wrap = $('#usage_timeline');
-  wrap.empty();
+  const usage = productData.usageData;
 
-  const items = [];
+  updateElementTextContent('#usageStatus', usage.status);
+  updateElementTextContent('#usageLoadPercentage',
+    usage.loadPercentage != null ? `${usage.loadPercentage}%` : null);
+  updateElementTextContent('#usageRunningHours', usage.runningHours);
+  updateElementTextContent('#usageLastInspection', formatDate(usage.lastInspection));
+  updateElementTextContent('#usageNotes', usage.notes);
 
-  maint.forEach((it, i) => {
-    items.push({
-      kind: 'maintenance',
-      title: it.type || 'Maintenance',
-      date: it.date || '',
-      notes: it.description || '',
-      meta: [
-        it.technician ? `Tech: ${it.technician}` : null,
-        (it.cost || it.cost === 0) ? `Cost: ${it.cost}` : null
-      ].filter(Boolean).join(' · '),
-      attachments: (it.attachments || []).map((a, idx) => ({
-        name: a.filename || `Attachment #${idx + 1}`,
-        url: a.url
-      }))
-    });
-  });
+  const operational = usage.operationalData || {};
+  updateElementTextContent('#operationalStatus', operational.status);
+  updateElementTextContent('#operationalTemperature',
+    operational.temperature != null ? `${operational.temperature} °C` : null);
+  updateElementTextContent('#operationalVibration',
+    operational.vibration != null ? `${operational.vibration} mm/s` : null);
+  updateElementTextContent('#operationalEnergy',
+    operational.energyConsumption != null ? `${operational.energyConsumption} kW` : null);
+  updateElementTextContent('#operationalLoad',
+    operational.loadLevel != null ? `${operational.loadLevel}%` : null);
+}
 
-  repair.forEach((it, i) => {
-    items.push({
-      kind: 'repair',
-      title: it.component ? `Repair – ${it.component}` : 'Repair',
-      date: it.date || '',
-      notes: it.description || '',
-      meta: [
-        it.vendor ? `Vendor: ${it.vendor}` : null,
-        (it.cost || it.cost === 0) ? `Cost: ${it.cost}` : null,
-        (typeof it.underWarranty === 'boolean') ? `Warranty: ${it.underWarranty ? 'Yes' : 'No'}` : null
-      ].filter(Boolean).join(' · '),
-      attachments: (it.attachments || []).map((a, idx) => ({
-        name: a.filename || `Attachment #${idx + 1}`,
-        url: a.url
-      }))
-    });
-  });
+function renderProduction() {
+  if (!productData || !productData.production) return;
 
-  items.sort((a, b) => (new Date(b.date) - new Date(a.date)) || 0);
+  const production = productData.production;
+  updateElementTextContent('#productionManufacturer', production.manufacturer);
+  updateElementTextContent('#productionAddress', production.address);
+  updateElementTextContent('#productionDate', formatDate(production.date));
+}
 
-  const hasGeneral =
-    u.environment || u.usageFrequency || u.averageUsagePerDay ||
-    u.lastUsedAt || u.condition || u.notes;
+function renderEndOfLife() {
+  if (!productData || !productData.endOfLife) return;
 
-  if (hasGeneral) {
-    const general = $(`
-      <div class="border rounded p-3 mb-3 bg-light-subtle">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <h6 class="mb-0 fw-semibold">Usage Data</h6>
-          <small class="text-muted">${u.lastUsedAt ? `Last used: ${u.lastUsedAt}` : ''}</small>
-        </div>
-        <div class="small row g-2">
-          ${u.environment ? `<div class="col-md-4"><b>Environment:</b> ${u.environment}</div>` : ''}
-          ${u.usageFrequency ? `<div class="col-md-4"><b>Frequency:</b> ${u.usageFrequency}</div>` : ''}
-          ${u.averageUsagePerDay ? `<div class="col-md-4"><b>Avg/day:</b> ${u.averageUsagePerDay}</div>` : ''}
-          ${u.condition ? `<div class="col-md-4"><b>Condition:</b> ${u.condition}</div>` : ''}
-          ${u.notes ? `<div class="col-md-8"><b>Notes:</b> ${u.notes}</div>` : ''}
-        </div>
-      </div>
-    `);
-    wrap.append(general);
-  }
-
-  if (!items.length) {
-    $('#usage_empty').removeClass('d-none');
-    return;
-  }
-  $('#usage_empty').addClass('d-none');
-
-  const maintRows = maint.map((it, i) => `
-    <tr>
-      <td>${it.date || '-'}</td>
-      <td>${it.type || '-'}</td>
-      <td>${it.technician || '-'}</td>
-      <td>${it.cost || '-'}</td>
-      <td class="text-end">
-        ${(it.attachments || []).map(a =>
-          `<a href="${a.url}" target="_blank" class="text-decoration-none small">📎</a>`
-        ).join(' ')}
-      </td>
-    </tr>
-  `).join('');
-
-  const repairRows = repair.map((it, i) => `
-    <tr>
-      <td>${it.date || '-'}</td>
-      <td>${it.component || '-'}</td>
-      <td>${it.vendor || '-'}</td>
-      <td>${it.cost || '-'}</td>
-      <td class="text-end">
-        ${(it.attachments || []).map(a =>
-          `<a href="${a.url}" target="_blank" class="text-decoration-none small">📎</a>`
-        ).join(' ')}
-      </td>
-    </tr>
-  `).join('');
-
-  const accordion = $(`
-    <div class="accordion" id="usageAccordion">
-      <div class="accordion-item">
-        <h2 class="accordion-header" id="headingMaint">
-          <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseMaint" aria-expanded="false" aria-controls="collapseMaint">
-            Maintenance History (${maint.length})
-          </button>
-        </h2>
-        <div id="collapseMaint" class="accordion-collapse collapse" aria-labelledby="headingMaint" data-bs-parent="#usageAccordion">
-          <div class="accordion-body p-0">
-            ${maint.length
-              ? `<table class="table table-sm mb-0 align-middle"><thead><tr><th>Date</th><th>Type</th><th>Technician</th><th>Cost</th><th class="text-end">Files</th></tr></thead><tbody>${maintRows}</tbody></table>`
-              : `<div class="text-muted small p-3">No maintenance records.</div>`
-            }
-          </div>
-        </div>
-      </div>
-
-      <div class="accordion-item mt-2">
-        <h2 class="accordion-header" id="headingRepair">
-          <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseRepair" aria-expanded="false" aria-controls="collapseRepair">
-            Repair History (${repair.length})
-          </button>
-        </h2>
-        <div id="collapseRepair" class="accordion-collapse collapse" aria-labelledby="headingRepair" data-bs-parent="#usageAccordion">
-          <div class="accordion-body p-0">
-            ${repair.length
-              ? `<table class="table table-sm mb-0 align-middle"><thead><tr><th>Date</th><th>Component</th><th>Vendor</th><th>Cost</th><th class="text-end">Files</th></tr></thead><tbody>${repairRows}</tbody></table>`
-              : `<div class="text-muted small p-3">No repair records.</div>`
-            }
-          </div>
-        </div>
-      </div>
-    </div>
-  `);
-
-  wrap.append(accordion);
+  const eol = productData.endOfLife;
+  updateElementTextContent('#eolStatus', eol.status);
+  updateElementTextContent('#eolPlannedDate', formatDate(eol.plannedDate));
+  updateElementTextContent('#eolRecyclingPartner', eol.recyclingPartner);
+  updateElementTextContent('#eolNotes', eol.notes);
 }
 
 function renderAttachments() {
-  const cont = $('#attachments-container');
-  cont.empty();
+  const attachments = productData?.attachments || [];
+  const $container = $('#attachmentsList').empty();
 
-  const a = productData.attachments || {};
-  const blocks = [
-    { title: 'Manuals', key: 'manuals' },
-    { title: 'Warranty', key: 'warranty' },
-    { title: 'Maintenance', key: 'maintenance' },
-    { title: 'Repair', key: 'repair' }
-  ];
+  if (!attachments.length) {
+    $container.html('<p class="text-muted small mb-0">Nenhum anexo disponível.</p>');
+    return;
+  }
 
-  let hasAny = false;
-  blocks.forEach(b => {
-    const items = Array.isArray(a[b.key]) ? a[b.key] : [];
-    if (!items.length) return;
-
-    hasAny = true;
-    const list = items
-      .map(it => `<li><a href="${it.url}" target="_blank" rel="noopener">${it.name || 'Arquivo'}</a></li>`)
-      .join('');
-
-    cont.append(`
-      <div class="mb-3">
-        <h6 class="mb-2">${b.title}</h6>
-        <ul class="mb-0">${list}</ul>
+  attachments.forEach(att => {
+    const $row = $(`
+      <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-light small">
+        <span>${att.name || 'Anexo'}</span>
+        <a href="${att.url || '#'}" class="text-primary small" target="_blank" rel="noopener">
+          Ver
+        </a>
       </div>
     `);
+    $container.append($row);
   });
-
-  if (!hasAny) {
-    cont.html('<p class="text-muted mb-0">Dado não fornecido</p>');
-  }
 }
 
 function updateHomeData(data) {
-  // Mapeamento de campos para atualização
-  const fieldMap = {
-    conveyorCount: data.conveyor_count !== undefined ? data.conveyor_count : 'N/A',
-    position_in_sequence: data.position_in_sequence || 'N/A',
-    number_of_pieces: data.pieces_transported || '0',
-    last_piece_time: data.last_piece_time ? data.last_piece_time + ' s' : 'N/A',
-    motor_operating_time: data.motor_operating_time ? data.motor_operating_time + ' s' : 'N/A',
-    motor_status: data.motor_on ? 'ON' : 'OFF',
-    input_sensor_status: data.input_sensor ? 'Active' : 'Inactive',
-    output_sensor_status: data.output_sensor ? 'Active' : 'Inactive',
-    vibration: data.vibration ? data.vibration + ' m/s²' : 'N/A',
-    current: data.current ? data.current + ' A' : 'N/A',
-    battery_level: data.battery_level ? data.battery_level + '%' : 'N/A',
-    update_date: new Date().toLocaleString()
+  if (!productData.usageData) productData.usageData = {};
+  productData.usageData.operationalData = {
+    ...(productData.usageData.operationalData || {}),
+    ...data
   };
-
-  // Atualiza cada campo com jQuery
-  $.each(fieldMap, function (id, value) {
-    const $element = $('#' + id);
-    if ($element.length) {
-      $element.text(value);
-
-      // Aplica estilos condicionais
-      if (id.includes('status') || id.includes('sensor')) {
-        $element
-          .removeClass('text-success text-danger')
-          .addClass(value.includes('ON') || value.includes('Active') ? 'text-success' : 'text-danger');
-      }
-    }
-  });
-
-  // Feedback visual de atualização
-  showUpdateNotification();
+  renderUsageData();
 }
 
 let lastOperationalData = null;
@@ -278,7 +260,7 @@ function diffOperationalData(prev, curr) {
 function saveOperationalDelta(delta) {
   if (!delta) return;
 
-  const url = `/products/${productData.id}/operational/update/`;
+  const url = `/api/products/${productData.id}/operational/update/`;
 
   const csrftoken = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1];
 
@@ -294,7 +276,6 @@ function saveOperationalDelta(delta) {
 }
 
 function showUpdateNotification() {
-  // Cria o toast com jQuery
   const $toast = $(`
         <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
             <div class="toast show" role="alert">
@@ -310,7 +291,6 @@ function showUpdateNotification() {
         </div>
     `);
 
-  // Adiciona ao body e configura timeout para remoção
   $('body').append($toast);
 
   setTimeout(function () {
@@ -321,37 +301,69 @@ function showUpdateNotification() {
   }, 3000);
 }
 
+
 $(document).ready(function () {
-  // Conexão MQTT
-  const client = mqtt.connect('wss://test.mosquitto.org:8081', {
-    clientId: 'conveyor-passport-' + Math.random().toString(16).substr(2, 8)
-  });
+  if (typeof productData === 'undefined' || !productData) {
+    console.error('productData not defined');
+    return;
+  }
 
-  client.on('connect', function () {
-    console.log('Connected to MQTT Broker');
-    client.subscribe('conveyor3/status');
-  });
-
-  client.on('message', function (topic, message) {
-    try {
-      const data = JSON.parse(message.toString());
-      if (topic === 'conveyor3/status') {
-        updateHomeData(data);
-
-        const delta = diffOperationalData(lastOperationalData, data);
-        if (delta) {
-          saveOperationalDelta(delta);
-          lastOperationalData = data;
-        }
-      }
-    } catch (e) {
-      console.error('Error parsing MQTT message:', e);
-    }
-  });
+  renderProductHeader(productData);
+  renderBasicInfo(productData);
+  renderTechnicalData(productData);
+  renderLifecycleData(productData);
+  renderSustainabilityData(productData);
+  renderDocuments(productData);
   renderProduction();
   renderEndOfLife();
   renderUsageData();
   renderAttachments();
 
+
+  const mqttBroker = 'wss://test.mosquitto.org:8081/mqtt';
+
+  const client = mqtt.connect(mqttBroker, {
+    clientId: 'conveyor-passport-' + Math.random().toString(16).substr(2, 8)
+  });
+
+  const baseTopic = 'conveyor/operational_data';
+  const productTopic = `${baseTopic}/${productData.id}`;
+
+  client.on('connect', function () {
+    console.log('Connected to MQTT Broker:', mqttBroker);
+    console.log('Subscribing to topic:', productTopic);
+
+    client.subscribe(productTopic, function (err) {
+      if (err) {
+        console.error('Erro ao inscrever no tópico:', err);
+      } else {
+        console.log('Inscrito no tópico do produto:', productTopic);
+      }
+    });
+  });
+
+  client.on('message', function (topic, message) {
+    try {
+      if (topic !== productTopic) {
+        return;
+      }
+
+      const data = JSON.parse(message.toString());
+      console.log('MQTT message for this product:', topic, data);
+
+      updateHomeData(data);
+
+      const delta = diffOperationalData(lastOperationalData, data);
+      if (delta) {
+        saveOperationalDelta(delta);
+
+        lastOperationalData = data;
+
+        showUpdateNotification();
+      }
+    } catch (e) {
+      console.error('Error parsing MQTT message:', e);
+    }
+  });
   initMap();
 });
