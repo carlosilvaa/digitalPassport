@@ -1,6 +1,8 @@
 # apps/products/serializers.py
 from rest_framework import serializers
 from apps.products.models import *
+from apps.tracking.utils import log_product_audit
+
 # --- Embedded serializers ---
 
 class NestedDictField(serializers.DictField):
@@ -215,7 +217,7 @@ class ProductsSerializer(serializers.Serializer):
         return None if data is None else cls(**data)
 
     def create(self, validated_data):
-        return Products(
+        product = Products(
             identification=self._build_embed(Identification, validated_data['identification']),
             technicalSpecifications=self._build_embed(TechnicalSpecifications, validated_data.get('technicalSpecifications')),
             documentation=self._build_embed(Documentation, validated_data.get('documentation')),
@@ -225,9 +227,36 @@ class ProductsSerializer(serializers.Serializer):
             usageData=self._build_embed(UsageData, validated_data.get('usageData')),
             description=validated_data.get('description'),
             imageUrl=validated_data.get('imageUrl')
-        ).save()
+        )
+        
+        product.save()
+
+        new_data = product.to_mongo().to_dict()
+
+        request = self.context.get('request') if hasattr(self, 'context') else None
+        actor_id = None
+        actor_name = None
+        if request and getattr(request, "user", None) and request.user.is_authenticated:
+            actor_id = str(request.user.id)
+            actor_name = getattr(request.user, "get_full_name", lambda: request.user.username)()
+
+        log_product_audit(
+            instance=product,
+            event_type="create",
+            source=self.context.get("source", "api") if hasattr(self, 'context') else "api",
+            source_channel=self.context.get("source_channel", "web_app") if hasattr(self, 'context') else "web_app",
+            actor_id=actor_id,
+            actor_name=actor_name,
+            previous_data=None,
+            new_data=new_data,
+            notes="Criação de passaporte via ProductsSerializer.create",
+        )
+
+        return product
 
     def update(self, instance, validated_data):
+        previous_data = instance.to_mongo().to_dict()
+
         mapping = {
             'identification': Identification,
             'technicalSpecifications': TechnicalSpecifications,
@@ -235,7 +264,7 @@ class ProductsSerializer(serializers.Serializer):
             'sustainability': Sustainability,
             'productLifecycle': ProductLifecycle,
             'productionData': ProductionData,
-            'usageData': UsageData,   # <— NOVO
+            'usageData': UsageData,
         }
         for key, cls in mapping.items():
             if key in validated_data:
@@ -244,4 +273,26 @@ class ProductsSerializer(serializers.Serializer):
         instance.description = validated_data.get('description', instance.description)
         instance.imageUrl = validated_data.get('imageUrl', instance.imageUrl)
         instance.save()
+
+        new_data = instance.to_mongo().to_dict()
+
+        request = self.context.get('request') if hasattr(self, 'context') else None
+        actor_id = None
+        actor_name = None
+        if request and getattr(request, "user", None) and request.user.is_authenticated:
+            actor_id = str(request.user.id)
+            actor_name = getattr(request.user, "get_full_name", lambda: request.user.username)()
+
+        log_product_audit(
+            instance=instance,
+            event_type="update",
+            source=self.context.get("source", "api") if hasattr(self, 'context') else "api",
+            source_channel=self.context.get("source_channel", "web_app") if hasattr(self, 'context') else "web_app",
+            actor_id=actor_id,
+            actor_name=actor_name,
+            previous_data=previous_data,
+            new_data=new_data,
+            notes="Atualização de passaporte via ProductsSerializer.update",
+        )
+
         return instance

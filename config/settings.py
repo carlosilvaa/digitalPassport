@@ -83,6 +83,7 @@ INSTALLED_APPS = [
     "apps.products",
     "apps.accounts",
     "rest_framework",
+    "apps.tracking",
 
 ]
 
