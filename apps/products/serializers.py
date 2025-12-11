@@ -184,6 +184,11 @@ class UsageDataSerializer(serializers.Serializer):
     notes = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     maintenanceHistory = MaintenanceItemSerializer(many=True, required=False, allow_null=True)
     repairHistory = RepairItemSerializer(many=True, required=False, allow_null=True)
+    
+    operationalData = serializers.DictField(
+        required=False,
+        allow_null=True
+    )
 
 class ProductsSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
@@ -201,7 +206,6 @@ class ProductsSerializer(serializers.Serializer):
     createdAt = serializers.DateTimeField(read_only=True)
     
     productionData = ProductionDataSerializer(required=False, allow_null=True)
-    operationalData = OperationalDataSerializer(required=False, allow_null=True)
     usageData = UsageDataSerializer(required=False, allow_null=True)
 
     updatedAt = serializers.DateTimeField(read_only=True)
