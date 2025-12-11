@@ -70,6 +70,14 @@ SESSION_SAVE_EVERY_REQUEST = True  # renova expiração a cada request
 
 CSRF_COOKIE_HTTPONLY = False  # o JS precisa ler o cookie para enviar o cabeçalho
 
+# MQTT Settings
+ENABLE_MQTT_WORKER = True 
+
+MQTT_BROKER_HOST = "test.mosquitto.org"
+MQTT_BROKER_PORT = 1883
+MQTT_TOPIC = "conveyor/operational_data/#"
+
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -80,10 +88,10 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "apps.home",
-    "apps.products",
     "apps.accounts",
     "rest_framework",
     "apps.tracking",
+    "apps.products.apps.ProductsConfig",
 
 ]
 

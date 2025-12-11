@@ -1,7 +1,7 @@
 # apps/products/models.py
 from mongoengine import (
     DynamicDocument, EmbeddedDocument, EmbeddedDocumentField, StringField, BooleanField,
-    FloatField, IntField, ListField, URLField, DateField, FileField, DateTimeField
+    FloatField, IntField, ListField, URLField, DateField, FileField, DateTimeField, DictField
 )
 
 from datetime import datetime, timezone
@@ -149,6 +149,7 @@ class UsageData(EmbeddedDocument):
     notes = StringField(null=True)
     maintenanceHistory = ListField(EmbeddedDocumentField(MaintenanceItem), null=True)
     repairHistory = ListField(EmbeddedDocumentField(RepairItem), null=True)
+    operationalData = DictField(null=True)
 
 
 class Products(DynamicDocument):

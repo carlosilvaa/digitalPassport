@@ -974,35 +974,65 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
         }
         return Response({'tabs': tabs})
 
-    @action(detail=True, methods=["post"], url_path="operational/update", url_name="operational-update", permission_classes=[],)
+    @action(detail=True, methods=["post"], url_path="operational/update")
     def operational_update(self, request, pk=None):
-        product = self.get_object()
-
-        delta = request.data.get("data") or {}
-        if not isinstance(delta, dict):
+        product = Products.objects(id=pk).first()
+        if not product:
             return Response(
-                {"error": "`data` must be an object"},
-                status=status.HTTP_400_BAD_REQUEST
+                {"detail": "Product not found."},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
-        user = request.user if hasattr(request, "user") else None
-        actor_id = str(user.id) if user and user.is_authenticated else None
-        actor_name = user.get_full_name() if user and user.is_authenticated else None
+        try:
+            raw_body = request.body.decode("utf-8") or "{}"
+            payload = json.loads(raw_body)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return Response(
+                {"detail": "Invalid JSON payload."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        delta = payload.get("data") or {}
+
+        if not isinstance(delta, dict) or not delta:
+            return Response(
+                {"detail": "No operational data provided."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        actor_id = None
+        actor_name = None
+        if request.user and request.user.is_authenticated:
+            actor_id = str(request.user.id)
+            actor_name = (
+                request.user.get_full_name()
+                or getattr(request.user, "username", None)
+            )
 
         result = apply_operational_delta(
             product=product,
             delta=delta,
-            source="broker",
-            source_channel="mqtt_frontend",
+            source="api",
+            source_channel="web_operational_update",
             actor_id=actor_id,
             actor_name=actor_name,
-            notes="Delta operacional recebido via ProductsViewSet.operational_update",
+            notes="Atualização de dados operacionais via endpoint HTTP",
+            raw_topic=None,
+            raw_payload=json.dumps(delta),
         )
 
-        return Response({
-            "changed": result["changed"],
-            "productId": str(product.id),
-        })
+        usage = getattr(result["product"], "usageData", None)
+        operational = getattr(usage, "operationalData", None) if usage else None
+
+        return Response(
+            {
+                "ok": True,
+                "changed": result.get("changed", False),
+                "audit_id": result.get("audit_id"),
+                "operationalData": operational,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 # --------- páginas HTML ---------
 
@@ -1038,38 +1068,57 @@ class ProductsViews(LoginRequiredMixin, TemplateView):
 def product_details(request, product_id):
     product = Products.objects(id=product_id).first()
     if not product:
-        return render(request, '404.html', status=404)
+        return render(request, "404.html", status=404)
 
     uid = _get_current_user_id(request)
     profile = _get_profile(uid)
     if not uid or not profile or not _can_view(profile, uid, product):
-        return render(request, '403.html', status=403)
+        return render(request, "403.html", status=403)
 
     serializer = ProductsSerializer(product)
     data = serializer.data
 
-    def _inject_usage_attachment_urls(req, prod, _data):
-        usage = _data.get('usageData') or {}
-        base = f"/products/api/products/{prod.id}/usage-attachment/"
-        for item in (usage.get('maintenanceHistory') or []):
-            for att in (item.get('attachments') or []):
-                if att.get('attachmentId'):
-                    att['url'] = req.build_absolute_uri(base + att['attachmentId'] + "/")
-        for item in (usage.get('repairHistory') or []):
-            for att in (item.get('attachments') or []):
-                if att.get('attachmentId'):
-                    att['url'] = req.build_absolute_uri(base + att['attachmentId'] + "/")
+    usage = data.get("usageData") or {}
+    data["usageData"] = usage
 
-    _inject_usage_attachment_urls(request, product, data) 
+    if "operationalData" not in usage or usage["operationalData"] is None:
+        model_usage = getattr(product, "usageData", None)
+        if model_usage is not None and getattr(model_usage, "operationalData", None) is not None:
+            usage["operationalData"] = model_usage.operationalData
+            data["usageData"] = usage
+
+    def _inject_usage_attachment_urls(req, prod, _data):
+        usage_local = _data.get("usageData") or {}
+        base = f"/products/api/products/{prod.id}/usage-attachment/"
+
+        for item in (usage_local.get("maintenanceHistory") or []):
+            for att in (item.get("attachments") or []):
+                if att.get("attachmentId"):
+                    att["url"] = req.build_absolute_uri(
+                        base + att["attachmentId"] + "/"
+                    )
+
+        for item in (usage_local.get("repairHistory") or []):
+            for att in (item.get("attachments") or []):
+                if att.get("attachmentId"):
+                    att["url"] = req.build_absolute_uri(
+                        base + att["attachmentId"] + "/"
+                    )
+
+    _inject_usage_attachment_urls(request, product, data)
 
     product_json = json.dumps(data, cls=DjangoJSONEncoder)
 
-    context = TemplateLayout.init(request, {
-        'product': data, 
-        'product_json': product_json 
-    })
-    context['menu_items'] = get_menu_items(request)
-    return render(request, 'productDetail.html', context)
+    context = TemplateLayout.init(
+        request,
+        {
+            "product": product,
+            "product_json": product_json,
+        },
+    )
+    context["menu_items"] = get_menu_items(request)
+
+    return render(request, "productDetail.html", context)
 
 def passport_public(request, product_id):
     product = Products.objects(id=product_id, identification__isActive=True).first()
