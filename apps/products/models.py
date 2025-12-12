@@ -166,4 +166,6 @@ class Products(DynamicDocument):
     imageUrl = URLField(null=True)
     qr_code = URLField(null=True, blank=True)
     createdAt = DateTimeField(default=datetime.utcnow)
+    parentId = StringField(null=True)
+    childIds = ListField(StringField())
     meta = {'collection': 'products'}

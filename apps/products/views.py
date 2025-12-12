@@ -20,8 +20,9 @@ import re
 from django.utils.html import mark_safe
 from apps.products.forms import *
 from django.core.serializers.json import DjangoJSONEncoder
-from django.conf import settings
 from apps.products.services import apply_operational_delta
+from apps.tracking.utils import log_product_audit
+
 
 
 # ---------------- utils já existentes ----------------
@@ -81,6 +82,7 @@ def _safe_filename(original_name, content_type):
 def _get_current_user_id(request):
     return request.session.get("user_id")
 
+
 def _get_profile(uid: str):
     if not uid:
         return None
@@ -90,35 +92,68 @@ def _get_profile(uid: str):
     except Exception:
         return None
 
-def _can_create(profile) -> bool:
-    return bool(profile and (getattr(profile, "is_superuser", False) or getattr(profile, "is_company", False)))
-
-def _can_delete(profile) -> bool:
+def _is_superuser(profile) -> bool:
     return bool(profile and getattr(profile, "is_superuser", False))
 
-def _can_edit_full(profile, product) -> bool:
-    if not profile:
+def _is_creator(profile, product) -> bool:
+    if not profile or not product:
         return False
-    if getattr(profile, "is_superuser", False):
-        return True
-    return bool(getattr(profile, "is_company", False) and str(getattr(product, "companyUserId", "")) == str(profile.id))
+    return str(getattr(product, "createdById", "")) == str(profile.id)
 
-def _can_edit_partial(profile, product) -> bool:
-    if not profile:
+def _is_attached(profile, product) -> bool:
+    if not profile or not product:
         return False
     return str(getattr(product, "ownerUserId", "")) == str(profile.id)
 
-def _can_view(profile, uid: str, product) -> bool:
-    if not profile:
-        return False
-    if getattr(profile, "is_superuser", False):
+def _can_edit_full(profile, product) -> bool:
+    if _is_superuser(profile):
         return True
-    if getattr(profile, "is_company", False):
-        return (
-            str(getattr(product, "companyUserId", "")) == str(profile.id) or
-            str(getattr(product, "createdById", "")) == str(profile.id)
-        )
-    return str(getattr(product, "ownerUserId", "")) == str(uid)
+    return _is_creator(profile, product)
+
+def _can_edit_partial(profile, product) -> bool:
+    """
+    Edição parcial = usuário atrelado
+    """
+    if _is_superuser(profile):
+        # superuser pode tudo – inclusive editar full; manter compat
+        return True
+    return _is_attached(profile, product)
+
+def _can_view(profile, product) -> bool:
+    if not profile or not product:
+        return False
+    if _is_superuser(profile):
+        return True
+    return _is_creator(profile, product) or _is_attached(profile, product)
+
+def _can_delete(profile) -> bool:
+    return _is_superuser(profile)
+
+def _can_aggregate(profile, product) -> bool:
+    if not profile or not product:
+        return False
+    if _is_superuser(profile):
+        return True
+    return _is_creator(profile, product) or _is_attached(profile, product)
+
+def _inject_usage_attachment_urls(request, product, data):
+    usage = data.get('usageData') or {}
+    base = f"/products/api/products/{product.id}/usage-attachment/"
+
+    for item in (usage.get('maintenanceHistory') or []):
+        for att in (item.get('attachments') or []):
+            if att.get('attachmentId'):
+                att['url'] = request.build_absolute_uri(
+                    base + att['attachmentId'] + "/"
+                )
+
+    for item in (usage.get('repairHistory') or []):
+        for att in (item.get('attachments') or []):
+            if att.get('attachmentId'):
+                att['url'] = request.build_absolute_uri(
+                    base + att['attachmentId'] + "/"
+                )
+
 
 def _now_utc():
     return datetime.now(timezone.utc)
@@ -229,6 +264,29 @@ def render_custom_fields(fields_config, title=None, icon=None):
     html.append('</div>')
     return mark_safe(''.join(html))
 
+
+def _get_actor_info(uid: str):
+    if not uid:
+        return None, "Unknown"
+
+    try:
+        from apps.accounts.models import User
+        user = User.objects(id=uid).first()
+        if not user:
+            return str(uid), f"User {uid}"
+        
+        # tenta nome completo -> username -> email -> ID
+        name = (
+            getattr(user, "full_name", None)
+            or getattr(user, "name", None)
+            or getattr(user, "username", None)
+            or getattr(user, "email", None)
+            or f"User {uid}"
+        )
+        return str(user.id), name
+    except Exception:
+        return str(uid), f"User {uid}"
+
 # ---------------- Views ----------------
 
 class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
@@ -241,18 +299,18 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
             if not uid or not profile:
                 return Response({"success": False, "detail": "Não autenticado."}, status=status.HTTP_401_UNAUTHORIZED)
 
-            qs = Products.objects.filter(identification__isActive=True)
-
-            if getattr(profile, "is_superuser", False):
-                pass
-            elif getattr(profile, "is_company", False):
-                acc_id = str(profile.id)
-                qs = qs.filter(__raw__={"$or": [
-                    {"companyUserId": acc_id},
-                    {"createdById": acc_id}
-                ]})
+            if _is_superuser(profile):
+                qs = Products.objects.filter(identification__isActive=True)
             else:
-                qs = qs.filter(ownerUserId=str(profile.id))
+                acc_id = str(profile.id)
+                qs = Products.objects.filter(
+                    identification__isActive=True
+                ).filter(__raw__={
+                    "$or": [
+                        {"createdById": acc_id},
+                        {"ownerUserId": acc_id},
+                    ]
+                })
 
             serializer = self.serializer_class(qs, many=True)
             return Response({"success": True, "data": serializer.data}, status=status.HTTP_200_OK)
@@ -270,9 +328,6 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
             profile = _get_profile(uid)
             if not uid or not profile:
                 return Response({"success": False, "detail": "Não autenticado."}, status=status.HTTP_401_UNAUTHORIZED)
-            if not _can_create(profile):
-                return Response({"success": False, "detail": "Apenas Empresa ou Superuser podem criar passaportes."},
-                                status=status.HTTP_403_FORBIDDEN)
 
             json_data = json.loads(request.data.get('json', '{}'))
             clean_empty_strings(json_data)
@@ -286,8 +341,10 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
 
             product.createdById = str(uid)
             product.updatedById = str(uid)
+
             if getattr(profile, "is_company", False) and not getattr(product, "companyUserId", None):
                 product.companyUserId = str(uid)
+
             product.updatedAt = _now_utc()
 
             if 'manualFile' in request.FILES:
@@ -318,6 +375,29 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
                 )
 
             product.save()
+              # -------- AUDITORIA: snapshot depois --------
+            new_data = product.to_mongo().to_dict()
+            actor_id, actor_name = _get_actor_info(uid)
+
+              # -------- AUDITORIA: snapshot depois --------
+            new_data = product.to_mongo().to_dict()
+            actor_id, actor_name = _get_actor_info(uid)
+
+            log_product_audit(
+                instance=product,
+                event_type="create",
+                source="api",
+                source_channel="products_create",
+                actor_id=actor_id,
+                actor_name=actor_name,
+                previous_data=None,
+                new_data=new_data,
+                lifecycle_category="other",
+                lifecycle_type="create_passport",
+                related_product_id=None,
+                notes="Criação de passaporte via ProductsViewSet.create",
+            )
+            
             return Response({
                 "success": True,
                 "id": str(product.id),
@@ -334,7 +414,7 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
 
             uid = _get_current_user_id(request)
             profile = _get_profile(uid)
-            if not uid or not profile or not _can_view(profile, uid, product):
+            if not uid or not profile or not _can_view(profile, product):
                 return Response(
                     {"success": False, "detail": "Sem permissão para visualizar este produto."},
                     status=status.HTTP_403_FORBIDDEN
@@ -354,22 +434,6 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
                     f"/products/api/products/{product.id}/manual/"
                 )
                 data['manualFileName'] = getattr(product.manualFile, "filename", None) or "manual.pdf"
-
-            def _inject_usage_attachment_urls(request, product, data):
-                usage = data.get('usageData') or {}
-                base = f"/products/api/products/{product.id}/usage-attachment/"
-                for item in (usage.get('maintenanceHistory') or []):
-                    for att in (item.get('attachments') or []):
-                        if att.get('attachmentId'):
-                            att['url'] = request.build_absolute_uri(
-                                base + att['attachmentId'] + "/"
-                            )
-                for item in (usage.get('repairHistory') or []):
-                    for att in (item.get('attachments') or []):
-                        if att.get('attachmentId'):
-                            att['url'] = request.build_absolute_uri(
-                                base + att['attachmentId'] + "/"
-                            )
 
             _inject_usage_attachment_urls(request, product, data)
 
@@ -399,33 +463,22 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
             if not (full or part):
                 return Response({"success": False, "detail": "Sem permissão para editar este passaporte."},
                                 status=status.HTTP_403_FORBIDDEN)
-
-            is_super = bool(getattr(profile, "is_superuser", False))
-            is_company = bool(getattr(profile, "is_company", False))
+                
+            # -------- AUDITORIA: snapshot antes --------
+            previous_data = product.to_mongo().to_dict()
 
             try:
                 json_data = json.loads(request.data.get("json", "{}"))
             except Exception:
                 json_data = {}
-            
-            if is_company and not is_super:
-                forbidden = {"usageData", "productLifecycle"}
-                for key in forbidden:
-                    if key in json_data:
-                        json_data.pop(key)
-            
-            remove_ids_raw = request.data.get("removeUsageAttachmentIds")
-            remove_ids = set()
-            if remove_ids_raw:
-                try:
-                    remove_ids = set(json.loads(remove_ids_raw) or [])
-                except Exception:
-                    pass
 
+            # limpeza de strings vazias => None
             clean_empty_strings(json_data)
 
             if part and not full:
                 json_data = _prune_by_spec(json_data, ALLOWED_PARTIAL_SPEC)
+
+                # Em edição parcial, só pode mexer em anexos de usageData; nada de manual/image root
                 for fk in request.FILES.keys():
                     if fk in ("manualFile", "imageFile") or not _is_usage_filekey(fk):
                         return Response(
@@ -433,20 +486,22 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
                             status=status.HTTP_403_FORBIDDEN,
                         )
 
+            # -------- Manter anexos antigos de manutenção/reparo --------
             old_maint_attachments = {}
             old_repair_attachments = {}
-            
+
             if hasattr(product, 'usageData') and product.usageData:
                 if product.usageData.maintenanceHistory:
                     for idx, item in enumerate(product.usageData.maintenanceHistory):
                         if item.attachments:
                             old_maint_attachments[idx] = list(item.attachments)
-                
+
                 if product.usageData.repairHistory:
                     for idx, item in enumerate(product.usageData.repairHistory):
                         if item.attachments:
                             old_repair_attachments[idx] = list(item.attachments)
 
+            # -------- Serializer parcial --------
             serializer = self.serializer_class(product, data=json_data, partial=True)
             if not serializer.is_valid():
                 return Response({"success": False, "errors": serializer.errors},
@@ -454,6 +509,7 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
 
             updated_product = serializer.save()
 
+            # Garante estruturas de usageData
             if not updated_product.usageData:
                 updated_product.usageData = UsageData()
             if updated_product.usageData.maintenanceHistory is None:
@@ -461,7 +517,7 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
             if updated_product.usageData.repairHistory is None:
                 updated_product.usageData.repairHistory = []
 
-            # Restore maintenance attachments
+            # Restaura anexos antigos (manutenção)
             for idx, attachments in old_maint_attachments.items():
                 if idx < len(updated_product.usageData.maintenanceHistory):
                     item = updated_product.usageData.maintenanceHistory[idx]
@@ -469,13 +525,22 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
                         item.attachments = []
                     item.attachments.extend(attachments)
 
-            # Restore repair attachments
+            # Restaura anexos antigos (reparo)
             for idx, attachments in old_repair_attachments.items():
                 if idx < len(updated_product.usageData.repairHistory):
                     item = updated_product.usageData.repairHistory[idx]
                     if item.attachments is None:
                         item.attachments = []
                     item.attachments.extend(attachments)
+
+            # Remover anexos marcados para remoção
+            remove_ids_raw = request.data.get("removeUsageAttachmentIds")
+            remove_ids = set()
+            if remove_ids_raw:
+                try:
+                    remove_ids = set(json.loads(remove_ids_raw) or [])
+                except Exception:
+                    remove_ids = set()
 
             if remove_ids:
                 u = getattr(updated_product, "usageData", None)
@@ -496,6 +561,7 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
                                 kept.append(att)
                             item.attachments = kept
 
+            # Upload de anexos de manutenção
             for key, file in request.FILES.items():
                 if not key.startswith("usage_maint_"):
                     continue
@@ -527,6 +593,7 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
                 )
                 item.attachments.append(att)
 
+            # Upload de anexos de reparo
             for key, file in request.FILES.items():
                 if not key.startswith("usage_repair_"):
                     continue
@@ -570,8 +637,13 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
                 updated_product.imageFile = None
                 updated_product.imageUrl = None
 
-            # Substituir manualFile / imageFile se enviados
+            # Substituir manualFile / imageFile se enviados (apenas se full ou superuser – opcional)
             if "manualFile" in request.FILES:
+                if not full and not _is_superuser(profile):
+                    return Response(
+                        {"success": False, "detail": "Apenas o criador pode alterar o manual."},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
                 file = request.FILES["manualFile"]
                 ok, msg = _validate_pdf(file)
                 if not ok:
@@ -588,6 +660,11 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
                     )
 
             if "imageFile" in request.FILES:
+                if not full and not _is_superuser(profile):
+                    return Response(
+                        {"success": False, "detail": "Apenas o criador pode alterar a imagem principal."},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
                 img = request.FILES["imageFile"]
                 ok, msg = _validate_image(img)
                 if not ok:
@@ -607,6 +684,25 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
                 )
 
             updated_product.save()
+            
+            # -------- AUDITORIA: snapshot depois --------
+            new_data = updated_product.to_mongo().to_dict()
+            actor_id, actor_name = _get_actor_info(uid)
+
+            log_product_audit(
+                instance=updated_product,
+                event_type="update",
+                source="api",
+                source_channel="products_update_full" if full else "products_update_partial",
+                actor_id=actor_id,
+                actor_name=actor_name,
+                previous_data=previous_data,
+                new_data=new_data,
+                lifecycle_category="other",
+                lifecycle_type="update_full" if full else "update_partial",
+                related_product_id=None,
+                notes="Atualização de passaporte via ProductsViewSet.update",
+            )
 
             response_serializer = self.serializer_class(updated_product)
             response_data = response_serializer.data
@@ -624,29 +720,14 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
                 )
                 response_data['manualFileName'] = getattr(updated_product.manualFile, "filename", None) or "manual.pdf"
 
-            def _inject_usage_attachment_urls(request, product, data):
-                usage = data.get('usageData') or {}
-                base = f"/products/api/products/{product.id}/usage-attachment/"
-                for item in (usage.get('maintenanceHistory') or []):
-                    for att in (item.get('attachments') or []):
-                        if att.get('attachmentId'):
-                            att['url'] = request.build_absolute_uri(
-                                base + att['attachmentId'] + "/"
-                            )
-                for item in (usage.get('repairHistory') or []):
-                    for att in (item.get('attachments') or []):
-                        if att.get('attachmentId'):
-                            att['url'] = request.build_absolute_uri(
-                                base + att['attachmentId'] + "/"
-                            )
-
+            # Re-injetar URLs dos anexos de usageData
             _inject_usage_attachment_urls(request, updated_product, response_data)
-
+            
             return Response(
                 {
                     "success": True,
                     "message": "Produto atualizado com sucesso",
-                    "data": response_data
+                    "data": response_data,
                 },
                 status=status.HTTP_200_OK,
             )
@@ -657,7 +738,6 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
         except json.JSONDecodeError as e:
             return Response({"success": False, "error": "Erro ao processar JSON", "details": str(e)},
                             status=status.HTTP_400_BAD_REQUEST)
-
 
     def destroy(self, request, pk=None):
         try:
@@ -670,13 +750,38 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
                                 status=status.HTTP_403_FORBIDDEN)
 
             product = Products.objects.get(id=pk)
+
+            # -------- AUDITORIA: snapshot antes --------
+            previous_data = product.to_mongo().to_dict()
+
             product.identification.isActive = False
             product.save()
+
+            # -------- AUDITORIA: snapshot depois --------
+            new_data = product.to_mongo().to_dict()
+            actor_id, actor_name = _get_actor_info(uid)
+
+            log_product_audit(
+                instance=product,
+                event_type="update",
+                source="api",
+                source_channel="destroy",
+                actor_id=actor_id,
+                actor_name=actor_name,
+                previous_data=previous_data,
+                new_data=new_data,
+                lifecycle_category="other",
+                lifecycle_type="deactivate_passport",
+                related_product_id=None,
+                notes="Desativação (soft delete) do passaporte via ProductsViewSet.destroy",
+            )
+
             return Response({"success": True, "message": "Produto desativado com sucesso"},
                             status=status.HTTP_200_OK)
         except Products.DoesNotExist:
             return Response({"success": False, "error": "Produto não encontrado"},
                             status=status.HTTP_404_NOT_FOUND)
+
 
     @action(detail=True, methods=['get'], url_path='manual')
     def manual(self, request, pk=None):
@@ -706,16 +811,14 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
             profile = _get_profile(uid)
             if not uid or not profile:
                 return Response({"success": False, "detail": "Não autenticado."}, status=status.HTTP_401_UNAUTHORIZED)
-            if not _can_create(profile):
-                return Response({"success": False, "detail": "Apenas Empresa ou Superuser podem associar proprietário."},
-                                status=status.HTTP_403_FORBIDDEN)
 
             product = Products.objects.get(id=pk)
 
-            if not getattr(profile, "is_superuser", False):
-                if not _can_edit_full(profile, product):
-                    return Response({"success": False, "detail": "Sem permissão para associar proprietário a este produto."},
-                                    status=status.HTTP_403_FORBIDDEN)
+            if not (_is_superuser(profile) or _is_creator(profile, product)):
+                return Response(
+                    {"success": False, "detail": "Apenas o criador do passaporte pode associar um proprietário."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
 
             identifier = (request.data.get("identifier") or "").strip()
             if not identifier:
@@ -735,10 +838,33 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
                 return Response({"success": False, "detail": "Nenhum utilizador encontrado para esse NIF/NISS."},
                                 status=status.HTTP_404_NOT_FOUND)
 
+            # -------- AUDITORIA: snapshot antes --------
+            previous_data = product.to_mongo().to_dict()
+
             product.ownerUserId = str(target.id)
             product.updatedById = str(uid)
             product.updatedAt = _now_utc()
             product.save()
+
+            # -------- AUDITORIA: snapshot depois --------
+            new_data = product.to_mongo().to_dict()
+            actor_id, actor_name = _get_actor_info(uid)
+
+
+            log_product_audit(
+                instance=product,
+                event_type="update",
+                source="api",
+                source_channel="associate_owner",
+                actor_id=actor_id,
+                actor_name=actor_name,
+                previous_data=previous_data,
+                new_data=new_data,
+                lifecycle_category="movement",
+                lifecycle_type="set_owner",
+                related_product_id=str(target.id),
+                notes=f"Associação de proprietário via NIF/NISS: {identifier}",
+            )
 
             return Response({"success": True, "ownerUserId": product.ownerUserId}, status=status.HTTP_200_OK)
 
@@ -748,12 +874,13 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
             print("associate_owner error:", e)
             return Response({"success": False, "detail": "Erro ao associar proprietário."},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
+
+ 
     @action(detail=True, methods=['get'], url_path='usage-attachment/(?P<attachment_id>[a-f0-9]{32})')
     def usage_attachment(self, request, pk=None, attachment_id=None):
         product = _get_product_or_404(pk)
         uid = _get_current_user_id(request); profile = _get_profile(uid)
-        if not uid or not profile or not _can_view(profile, uid, product):
+        if not uid or not profile or not _can_view(profile, product):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         u = getattr(product, "usageData", None)
@@ -1034,6 +1161,280 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @action(detail=True, methods=['get'], url_path='aggregation-candidates')
+    def aggregation_candidates(self, request, pk=None):
+        uid = _get_current_user_id(request)
+        profile = _get_profile(uid)
+        if not uid or not profile:
+            return Response({"success": False, "detail": "Não autenticado."},
+                            status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            parent = Products.objects.get(id=pk)
+        except Products.DoesNotExist:
+            return Response({"success": False, "detail": "Produto (pai) não encontrado."},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        if not _can_aggregate(profile, parent):
+            return Response({"success": False, "detail": "Sem permissão para gerenciar agregação neste passaporte."},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        acc_id = str(profile.id)
+
+        raw_parent_free = {
+            "$or": [
+                {"parentId": {"$exists": False}},
+                {"parentId": None},
+            ]
+        }
+
+        qs = Products.objects.filter(
+            identification__isActive=True
+        ).filter(__raw__={
+            "$and": [
+                {
+                    "$or": [
+                        {"createdById": acc_id},
+                        {"ownerUserId": acc_id},
+                    ]
+                },
+                raw_parent_free,
+                {"_id": {"$ne": parent.id}},
+            ]
+        })
+
+        serializer = self.serializer_class(qs, many=True)
+        return Response({"success": True, "data": serializer.data}, status=status.HTTP_200_OK)
+    
+    @action(detail=True, methods=['post'], url_path='aggregate-child')
+    def aggregate_child(self, request, pk=None):
+        uid = _get_current_user_id(request)
+        profile = _get_profile(uid)
+        if not uid or not profile:
+            return Response({"success": False, "detail": "Não autenticado."},
+                            status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            parent = Products.objects.get(id=pk)
+        except Products.DoesNotExist:
+            return Response({"success": False, "detail": "Passaporte pai não encontrado."},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        if not _can_aggregate(profile, parent):
+            return Response({"success": False, "detail": "Sem permissão para agregar neste passaporte."},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        # Pai não pode ser filho de outro
+        if getattr(parent, "parentId", None):
+            return Response(
+                {"success": False, "detail": "Não é possível agregar itens a um passaporte que já é filho de outro."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payload = request.data or {}
+        child_id = (payload.get("childId") or payload.get("child_id") or "").strip()
+        if not child_id:
+            return Response({"success": False, "detail": "Informe o ID do passaporte a agregar (childId)."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if child_id == str(parent.id):
+            return Response({"success": False, "detail": "Um passaporte não pode ser agregado a si próprio."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            child = Products.objects.get(id=child_id)
+        except Products.DoesNotExist:
+            return Response({"success": False, "detail": "Passaporte filho não encontrado."},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        # user precisa poder ver o filho também
+        if not _can_view(profile, child):
+            return Response({"success": False, "detail": "Sem permissão para usar este passaporte como filho."},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        # Filho precisa estar livre
+        if getattr(child, "parentId", None):
+            return Response({"success": False, "detail": "Este passaporte já está agregado a outro passaporte."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # se por algum motivo um filho tiver childIds, não deixamos virar pai de outro nível
+        if getattr(child, "childIds", []):
+            return Response({"success": False, "detail": "Este passaporte já é pai de outros e não pode ser agregado."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # -------- AUDITORIA: snapshots antes --------
+        parent_before = parent.to_mongo().to_dict()
+        child_before = child.to_mongo().to_dict()
+
+        # Garante lista
+        if parent.childIds is None:
+            parent.childIds = []
+
+        # Evita duplicidade
+        cid = str(child.id)
+        if cid not in parent.childIds:
+            parent.childIds.append(cid)
+
+        child.parentId = str(parent.id)
+
+        # Metadata de auditoria simples
+        parent.updatedById = str(uid)
+        parent.updatedAt = _now_utc()
+        child.updatedById = str(uid)
+        child.updatedAt = _now_utc()
+
+        child.save()
+        parent.save()
+
+        # -------- AUDITORIA: snapshots depois --------
+        parent_after = parent.to_mongo().to_dict()
+        child_after = child.to_mongo().to_dict()
+        actor_id, actor_name = _get_actor_info(uid)
+
+
+        # log no PAI
+        log_product_audit(
+            instance=parent,
+            event_type="update",
+            source="api",
+            source_channel="aggregate_child",
+            actor_id=actor_id,
+            actor_name=actor_name,
+            previous_data=parent_before,
+            new_data=parent_after,
+            lifecycle_category="movement",
+            lifecycle_type="add_child",
+            related_product_id=str(child.id),
+            notes=f"Agregado filho {child.id} ao pai {parent.id}",
+        )
+
+        # log no FILHO
+        log_product_audit(
+            instance=child,
+            event_type="update",
+            source="api",
+            source_channel="aggregate_child",
+            actor_id=actor_id,
+            actor_name=actor_name,
+            previous_data=child_before,
+            new_data=child_after,
+            lifecycle_category="movement",
+            lifecycle_type="set_parent",
+            related_product_id=str(parent.id),
+            notes=f"Passaporte filho {child.id} agregado ao pai {parent.id}",
+        )
+
+        return Response(
+            {
+                "success": True,
+                "message": "Passaporte agregado com sucesso.",
+                "parentId": str(parent.id),
+                "childId": cid,
+                "childIds": parent.childIds,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=['post'], url_path='unaggregate-child')
+    def unaggregate_child(self, request, pk=None):
+        uid = _get_current_user_id(request)
+        profile = _get_profile(uid)
+        if not uid or not profile:
+            return Response({"success": False, "detail": "Não autenticado."},
+                            status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            parent = Products.objects.get(id=pk)
+        except Products.DoesNotExist:
+            return Response({"success": False, "detail": "Passaporte pai não encontrado."},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        if not _can_aggregate(profile, parent):
+            return Response({"success": False, "detail": "Sem permissão para gerenciar agregação neste passaporte."},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        payload = request.data or {}
+        child_id = (payload.get("childId") or payload.get("child_id") or "").strip()
+        if not child_id:
+            return Response({"success": False, "detail": "Informe o ID do passaporte a desagregar (childId)."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            child = Products.objects.get(id=child_id)
+        except Products.DoesNotExist:
+            return Response({"success": False, "detail": "Passaporte filho não encontrado."},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        if str(child.parentId or "") != str(parent.id):
+            return Response(
+                {"success": False, "detail": "Este passaporte não está agregado a este pai."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # -------- AUDITORIA: snapshots antes --------
+        parent_before = parent.to_mongo().to_dict()
+        child_before = child.to_mongo().to_dict()
+
+        # filho — fica livre para ser agregado a outro no futuro
+        child.parentId = None
+        child.updatedById = str(uid)
+        child.updatedAt = _now_utc()
+        child.save()
+
+        # Remove da lista de filhos do pai
+        parent.childIds = [cid for cid in (parent.childIds or []) if cid != str(child.id)]
+        parent.updatedById = str(uid)
+        parent.updatedAt = _now_utc()
+        parent.save()
+
+        # -------- AUDITORIA: snapshots depois --------
+        parent_after = parent.to_mongo().to_dict()
+        child_after = child.to_mongo().to_dict()
+        actor_id, actor_name = _get_actor_info(uid)
+
+
+        log_product_audit(
+            instance=parent,
+            event_type="update",
+            source="api",
+            source_channel="unaggregate_child",
+            actor_id=actor_id,
+            actor_name=actor_name,
+            previous_data=parent_before,
+            new_data=parent_after,
+            lifecycle_category="movement",
+            lifecycle_type="remove_child",
+            related_product_id=str(child.id),
+            notes=f"Desagregado filho {child.id} do pai {parent.id}",
+        )
+
+        log_product_audit(
+            instance=child,
+            event_type="update",
+            source="api",
+            source_channel="unaggregate_child",
+            actor_id=actor_id,
+            actor_name=actor_name,
+            previous_data=child_before,
+            new_data=child_after,
+            lifecycle_category="movement",
+            lifecycle_type="unset_parent",
+            related_product_id=str(parent.id),
+            notes=f"Passaporte filho {child.id} desagregado do pai {parent.id}",
+        )
+
+        return Response(
+            {
+                "success": True,
+                "message": "Passaporte desagregado com sucesso.",
+                "parentId": str(parent.id),
+                "childId": str(child.id),
+                "childIds": parent.childIds,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 # --------- páginas HTML ---------
 
 @method_decorator(ensure_csrf_cookie, name='dispatch')
@@ -1047,21 +1448,20 @@ class ProductsViews(LoginRequiredMixin, TemplateView):
         uid = _get_current_user_id(self.request)
         profile = _get_profile(uid)
 
-        can_create = bool(profile and (
-            getattr(profile, "is_superuser", False) or
-            getattr(profile, "is_company", False)
-        ))
+        can_create = bool(profile)
         context["can_create"] = can_create
-        context["can_associate"] = can_create
+
+        context["can_associate"] = bool(profile)
 
         context["APP_CONTEXT"] = {
             "canCreate": can_create,
-            "canAssociate": can_create,
+            "canAssociate": bool(profile),
             "isCompany": bool(getattr(profile, "is_company", False)),
             "isSuperuser": bool(getattr(profile, "is_superuser", False)),
             "userId": str(getattr(profile, "id", "")),
         }
         return context
+
 
 
 @login_required
@@ -1072,7 +1472,7 @@ def product_details(request, product_id):
 
     uid = _get_current_user_id(request)
     profile = _get_profile(uid)
-    if not uid or not profile or not _can_view(profile, uid, product):
+    if not uid or not profile or not _can_view(profile, product):
         return render(request, "403.html", status=403)
 
     serializer = ProductsSerializer(product)
@@ -1086,24 +1486,6 @@ def product_details(request, product_id):
         if model_usage is not None and getattr(model_usage, "operationalData", None) is not None:
             usage["operationalData"] = model_usage.operationalData
             data["usageData"] = usage
-
-    def _inject_usage_attachment_urls(req, prod, _data):
-        usage_local = _data.get("usageData") or {}
-        base = f"/products/api/products/{prod.id}/usage-attachment/"
-
-        for item in (usage_local.get("maintenanceHistory") or []):
-            for att in (item.get("attachments") or []):
-                if att.get("attachmentId"):
-                    att["url"] = req.build_absolute_uri(
-                        base + att["attachmentId"] + "/"
-                    )
-
-        for item in (usage_local.get("repairHistory") or []):
-            for att in (item.get("attachments") or []):
-                if att.get("attachmentId"):
-                    att["url"] = req.build_absolute_uri(
-                        base + att["attachmentId"] + "/"
-                    )
 
     _inject_usage_attachment_urls(request, product, data)
 
