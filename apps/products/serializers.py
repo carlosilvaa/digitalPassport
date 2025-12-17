@@ -213,6 +213,11 @@ class ProductsSerializer(serializers.Serializer):
     updatedById   = serializers.CharField(read_only=True)
     ownerUserId   = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     companyUserId = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    parentId = serializers.CharField(read_only=True)
+    childIds = serializers.ListField(
+        child=serializers.CharField(),
+        read_only=True
+    )
     
     def get__id(self, obj):
         return {"$oid": str(obj.id)}
@@ -234,28 +239,6 @@ class ProductsSerializer(serializers.Serializer):
         )
         
         product.save()
-
-        new_data = product.to_mongo().to_dict()
-
-        request = self.context.get('request') if hasattr(self, 'context') else None
-        actor_id = None
-        actor_name = None
-        if request and getattr(request, "user", None) and request.user.is_authenticated:
-            actor_id = str(request.user.id)
-            actor_name = getattr(request.user, "get_full_name", lambda: request.user.username)()
-
-        log_product_audit(
-            instance=product,
-            event_type="create",
-            source=self.context.get("source", "api") if hasattr(self, 'context') else "api",
-            source_channel=self.context.get("source_channel", "web_app") if hasattr(self, 'context') else "web_app",
-            actor_id=actor_id,
-            actor_name=actor_name,
-            previous_data=None,
-            new_data=new_data,
-            notes="Criação de passaporte via ProductsSerializer.create",
-        )
-
         return product
 
     def update(self, instance, validated_data):

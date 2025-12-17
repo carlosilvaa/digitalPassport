@@ -275,7 +275,7 @@ function renderOperationalFromUsageOperationalData() {
   const op = usage.operationalData || {};
 
   const mapKeyToSelector = {
-    conveyor_count: "#conveyorCount",
+    conveyorCount: "#conveyorCount",
     position_in_sequence: "#position_in_sequence",
     number_of_pieces: "#number_of_pieces",
     last_piece_time: "#last_piece_time",
@@ -285,58 +285,34 @@ function renderOperationalFromUsageOperationalData() {
     input_sensor_status: "#input_sensor_status",
     output_sensor_status: "#output_sensor_status",
 
-    temperature: "#temperature",
     vibration: "#vibration",
     current: "#current",
-    energy_consumption: "#current",
     battery_level: "#battery_level",
-    load_level: "#load_level",
-
-    conveyorCount: "#conveyorCount",
-    positionInSequence: "#position_in_sequence",
-    numberOfPieces: "#number_of_pieces",
-    lastPieceTime: "#last_piece_time",
-    motorOperatingTime: "#motor_operating_time",
-    motorStatus: "#motor_status",
-    inputSensorStatus: "#input_sensor_status",
-    outputSensorStatus: "#output_sensor_status",
-    energyConsumption: "#current",
-    loadLevel: "#load_level",
-    status: "#motor_status"
   };
 
   const defaultMsg = "No data being published at the moment.";
   let hasAnyValue = false;
 
-  Object.keys(mapKeyToSelector).forEach((key) => {
-    const selector = mapKeyToSelector[key];
+  Object.entries(mapKeyToSelector).forEach(([key, selector]) => {
     if (!$(selector).length) return;
 
-    if (op[key] !== undefined && op[key] !== null && op[key] !== "") {
-      let value = op[key];
+    const val = op[key];
+    if (val === undefined || val === null || val === "") return;
 
-      if (key === "vibration") {
-        value = `${value} mm/s`;
-      } else if (key === "current" || key === "energy_consumption" || key === "energyConsumption") {
-        value = `${value} A`;
-      } else if (key === "temperature") {
-        value = `${value} °C`;
-      } else if (key === "battery_level") {
-        value = `${value} %`;
-      } else if (key === "load_level" || key === "loadLevel") {
-        value = `${value} %`;
-      }
+    let display = val;
 
-      updateText(selector, value, defaultMsg);
-      hasAnyValue = true;
-    }
+    if (key === "vibration") display = `${val} mm/s`;
+    if (key === "current") display = `${val} A`;
+    if (key === "battery_level") display = `${val} %`;
+
+    updateText(selector, display, defaultMsg);
+    hasAnyValue = true;
   });
 
   if (hasAnyValue) {
     $("#update_date").text(new Date().toString());
   }
 }
-
 
 function updateHomeData(delta) {
   if (!productData.usageData) productData.usageData = {};

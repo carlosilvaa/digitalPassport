@@ -1,4 +1,3 @@
-let selectedFile = null;
 let currentId = null;
 let stepper = null;
 let associateModal;
@@ -11,8 +10,14 @@ let movedDropArea = null;
 let movedDropOwner = null;
 let movedDropWasHidden = false;
 let removeAttachmentIds = new Set();
+let aggregateModal = null;
+let currentAggregateParentId = null;
 const EDIT_FORM_SELECTOR = '#product-form';
-const EDIT_MODAL_SELECTOR = '#product-modal';
+let aggregateCandidatesAll = [];
+let aggregateCandidatesFiltered = [];
+let aggregateCandidatesPage = 1;
+let aggregateCandidatesPageSize = 25;
+
 
 function lockAllEditFields() {
   const $f = $(EDIT_FORM_SELECTOR);
@@ -44,17 +49,6 @@ function unlockAllEditFields() {
   $('#manualFile').prop('disabled', false);
 }
 
-function unlockOnlyEditableFields(paths = []) {
-  const $f = $(EDIT_FORM_SELECTOR);
-  lockAllEditFields();
-
-  paths.forEach(p => {
-    $f.find(`[name="${p}"]`).prop('disabled', false);
-  });
-
-  $f.find('button[type="submit"]').prop('disabled', false);
-}
-
 function fetchProducts(callback) {
   $.ajax({
     url: '/products/api/products/',
@@ -65,7 +59,6 @@ function fetchProducts(callback) {
       Accept: 'application/json'
     },
     success: function (response) {
-      console.log('🚀 ~ fetchProducts ~ response:', response);
       if (response.success) {
         if (callback) callback(response.data);
       } else {
@@ -169,22 +162,23 @@ function cardHtml(product) {
 
   const statusClass = active ? 'bg-success' : 'bg-secondary';
 
-  const canAssociate = window.APP_CONTEXT?.canAssociate === true;
+  const uid = (window.APP_CONTEXT?.userId || '').toString();
+  const isSuperuser = window.APP_CONTEXT?.isSuperuser === true;
+  const createdById = (product.createdById || '').toString();
 
+  const canAssociate = isSuperuser || (uid && createdById && uid === createdById);
   const canDelete = window.APP_CONTEXT?.isSuperuser === true;
-
+  
   const productId = (product._id && (product._id.$oid || product._id)) || product.id || '';
-
+  
   const associateBtn = canAssociate
-    ? `
-    <button
-      class="btn btn-outline-primary px-3 btn-associate-owner"
-      data-product-id="${productId}"
-      title="Associar proprietário">
-      <i class="bx bx-link"></i> <span>Associar</span>
-    </button>
-  `
-    : '';
+    ? `<button
+        class="btn btn-outline-primary px-3 btn-associate-owner"
+        data-product-id="${productId}"
+        title="Associar proprietário">
+        <i class="bx bx-user-plus"></i><span>Associar</span>
+      </button>
+    `: '';
 
   const editBtn = `
     <button class="btn btn-outline-primary px-3 edit-product-btn" data-id="${id}" title="Editar">
@@ -193,43 +187,64 @@ function cardHtml(product) {
   `;
 
   const deleteBtn = canDelete
-    ? `
-    <button class="btn btn-outline-danger px-3 delete-product-btn" data-id="${id}" title="Excluir">
-      <i class="bx bx-trash"></i>
-    </button>
-  `
-    : '';
+    ? `<button class="btn btn-outline-danger px-3 delete-product-btn" data-id="${id}" title="Excluir">
+        <i class="bx bx-trash"></i>
+      </button>
+      `: '';
+
+    const ownerId = (product.ownerUserId || '').toString();
+
+    const canAggregate = isSuperuser || (
+      uid && (
+        (ownerId && ownerId === uid) ||
+        (!ownerId && createdById === uid)
+      )
+    );
+
+  const aggregateBtn = canAggregate
+    ? `<button
+        class="btn btn-outline-secondary px-3 btn-open-aggregate"
+        data-product-id="${productId}"
+        title="Gerenciar agregação">
+        <i class="bx bx-git-branch"></i><span>Agregar</span>
+      </button>
+    `: '';
+
 
   return `
-    <div class="col-md-6 col-lg-4 mb-4 d-flex">
-      <div class="card product-card w-100 border-0 shadow-sm overflow-hidden d-flex flex-column">
-        <span class="position-absolute top-0 start-0 m-2 badge ${statusClass}">
-          ${active ? 'Ativo' : 'Inativo'}
-        </span>
-        <div class="product-image-container position-relative overflow-hidden flex-grow-0">
-          <img src="${image}" class="card-img-top product-image" alt="${brand} ${model}" loading="lazy">
-          <div class="image-overlay d-flex align-items-center justify-content-center">
-            <button class="btn btn-outline-light btn-sm details-btn" data-id="${id}">
-              <i class="bx bx-zoom-in me-1"></i> Ver detalhes
-            </button>
-          </div>
-        </div>
-        <div class="card-body d-flex flex-column">
-          <div class="product-category mb-2">
-            <span class="badge bg-primary bg-opacity-25 text-white">${category}</span>
-          </div>
-          <h5 class="card-title mb-0">${brand} ${model}</h5>
-          <p class="card-text text-muted small mb-3">${desc}</p>
-          <div class="d-flex justify-content-between align-items-center border-top pt-3 mt-3">
-            <div class="btn-group btn-group-sm" role="group">
-              ${editBtn}
-              ${deleteBtn}
+      <div class="col-md-6 col-lg-4 mb-4 d-flex">
+        <div class="card product-card w-100 border-0 shadow-sm overflow-hidden d-flex flex-column">
+          <span class="position-absolute top-0 start-0 m-2 badge ${statusClass}">
+            ${active ? 'Ativo' : 'Inativo'}
+          </span>
+          <div class="product-image-container position-relative overflow-hidden flex-grow-0">
+            <img src="${image}" class="card-img-top product-image" alt="${brand} ${model}" loading="lazy">
+            <div class="image-overlay d-flex align-items-center justify-content-center">
+              <button class="btn btn-outline-light btn-sm details-btn" data-id="${id}">
+                <i class="bx bx-zoom-in me-1"></i> Ver detalhes
+              </button>
             </div>
-            ${associateBtn}
+          </div>
+          <div class="card-body d-flex flex-column">
+            <div class="product-category mb-2">
+              <span class="badge bg-primary bg-opacity-25 text-white">${category}</span>
+            </div>
+            <h5 class="card-title mb-0">${brand} ${model}</h5>
+            <p class="card-text text-muted small mb-3">${desc}</p>
+            <div class="d-flex justify-content-between align-items-center border-top pt-3 mt-3">
+              <div class="btn-group btn-group-sm" role="group">
+                ${editBtn}
+                ${deleteBtn}
+              </div>
+              <div class="btn-group btn-group-sm d-flex justfy-content-end" role="group">
+                ${associateBtn}
+                ${aggregateBtn}
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </div>`;
+    `;
 }
 
 function fillForm(data) {
@@ -880,17 +895,14 @@ function initEvents() {
     }
   });
 
-  $(document).on('input', '#identification_brandName, #identification_modelName, #stock', function () {
+  $(document).on('input', '#identification_brandName, #identification_modelName', function () {
     if (this.value.trim()) {
       $(this).removeClass('is-invalid');
       $(this).next('.invalid-feedback').remove();
     }
   });
 
-  $('.btn-associate-owner').off('click').on('click', function () {
-      const productId = $(this).data('product-id');
-      openAssociateModal(productId);
-    });
+
 }
 
 function initFileUploadArea() {
@@ -1123,23 +1135,22 @@ function bindAssociateButtons() {
 }
 
 function applyEditPermissionsSimple(product) {
-  const isCompany = window.APP_CONTEXT?.isCompany === true;
-  const isSuperuser = window.APP_CONTEXT?.isSuperuser === true;
   const userId = (window.APP_CONTEXT?.userId || '').toString();
+  const isSuperuser = window.APP_CONTEXT?.isSuperuser === true;
+  const creatorId = (product?.createdById || '').toString();
   const ownerId = (product?.ownerUserId || '').toString();
 
-  if (isCompany || isSuperuser) {
+  if (isSuperuser || (userId && creatorId && userId === creatorId)) {
     unlockAllEditFields();
     return;
   }
 
   lockAllEditFields();
+
   if (userId && ownerId && userId === ownerId) {
-    lockAllEditFields();
     $('#identification_brandName').prop('disabled', false);
     $('#identification_modelName').prop('disabled', false);
     $('#btnSubmitForm').prop('disabled', false);
-
     $('#browseImgBtn, #removeIMG, #imageFile').prop('disabled', true);
     $('#browseManualBtn, #removePDF, #manualFile').prop('disabled', true);
   }
@@ -1366,8 +1377,6 @@ function updateStepperButtonsCommon() {
   $('#btnPrevStepCommon').toggle(cur > 0);
   $('#btnNextStepCommon').toggle(cur < total);
   $('#btnSubmitFormCommon').toggle(cur === total);
-
-  $('#btnSubmitFormCommon').off('click').on('click', saveCommonModal);
 }
 
 function saveCommonModal() {
@@ -1591,10 +1600,6 @@ function getCommonModal() {
   const el = document.getElementById('product-common-modal');
   commonModalInst = bootstrap.Modal.getOrCreateInstance(el);
   return commonModalInst;
-}
-
-function gridifyUsageSummary() {
-  const $usageSection = $('#extra-prod');
 }
 
 function buildUsageAccordionTables(forceRebuild = false) {
@@ -1924,6 +1929,391 @@ function isHiddenItemEmpty($it, kind){
   }
 }
 
+function ensureAggregateModal() {
+  let $modal = $('#aggregateModal');
+  if (!$modal.length) {
+    const html = `<div class="modal fade" id="aggregateModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                      <div class="modal-content">
+                        <div class="modal-header">
+                          <h5 class="modal-title">Gerenciar agregação de passaportes</h5>
+                          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                        </div>
+                        <div class="modal-body">
+
+                          <div class="mb-3">
+                            <h6 class="mb-1">Passaportes agregados</h6>
+                            <div id="aggregateCurrentEmpty" class="text-muted small">
+                              Nenhum passaporte agregado a este passaporte.
+                            </div>
+                            <div class="list-group" id="aggregateCurrentList"></div>
+                          </div>
+
+                          <hr class="my-2" />
+
+                          <div>
+                            <h6 class="mb-2">Adicionar passaportes existentes</h6>
+
+                            <div class="input-group input-group-sm mb-2">
+                              <span class="input-group-text"><i class="bx bx-search"></i></span>
+                              <input type="text" class="form-control" id="aggregateSearchInput"
+                                    placeholder="Buscar por marca, modelo ou ID...">
+                            </div>
+
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                              <div class="text-muted small" id="aggregateCandidatesInfo"></div>
+                              <div class="d-flex gap-2 align-items-center">
+                                <select class="form-select form-select-sm" id="aggregatePageSize" style="width: 88px;">
+                                  <option value="10">10</option>
+                                  <option value="25" selected>25</option>
+                                  <option value="50">50</option>
+                                </select>
+                                <button class="btn btn-sm btn-outline-secondary" id="aggregatePrevPage" type="button">&laquo;</button>
+                                <span class="small" id="aggregatePageLabel">1/1</span>
+                                <button class="btn btn-sm btn-outline-secondary" id="aggregateNextPage" type="button">&raquo;</button>
+                              </div>
+                            </div>
+
+                            <div id="aggregateCandidatesEmpty" class="text-muted small d-none">
+                              Nenhum passaporte disponível para agregação.
+                            </div>
+                            <div class="list-group" id="aggregateCandidatesList"></div>
+                          </div>
+
+                        </div>
+                        <div class="modal-footer">
+                          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>`;
+    $('body').append(html);
+    $modal = $('#aggregateModal');
+  }
+
+  if (!aggregateModal) {
+    aggregateModal = bootstrap.Modal.getOrCreateInstance($modal[0]);
+  }
+  return $modal;
+}
+
+function openAggregateModal(parentId) {
+  currentAggregateParentId = parentId;
+  const $modal = ensureAggregateModal();
+  const $currentList = $('#aggregateCurrentList');
+  const $currentEmpty = $('#aggregateCurrentEmpty');
+  const $candList = $('#aggregateCandidatesList');
+  const $candEmpty = $('#aggregateCandidatesEmpty');
+  $currentList.empty();
+  $candList.empty();
+  $currentEmpty.removeClass('d-none');
+  $candEmpty.addClass('d-none');
+  aggregateCandidatesAll = [];
+  aggregateCandidatesFiltered = [];
+  aggregateCandidatesPage = 1;
+  aggregateCandidatesPageSize = parseInt($('#aggregatePageSize').val(), 10) || 25;
+  $('#aggregateSearchInput').val('');
+  $('#aggregateCandidatesInfo').text('');
+  $('#aggregatePageLabel').text('1/1');
+  $('#aggregatePrevPage').prop('disabled', true);
+  $('#aggregateNextPage').prop('disabled', true);
+
+
+  fetchProductById(parentId, function (data) {
+    if (!data) {
+      if (typeof showBootstrapAlert === 'function') {
+        showBootstrapAlert(
+          'danger',
+          'Erro',
+          'Não foi possível carregar os dados do passaporte para agregação.'
+        );
+      }
+      return;
+    }
+
+    const summaries = Array.isArray(data.childSummaries) ? data.childSummaries : [];
+    const rawChildIds = Array.isArray(data.childIds) ? data.childIds : [];
+
+    if (rawChildIds.length === 0) {
+      $currentList.empty();
+      $currentEmpty.removeClass('d-none');
+      return;
+    }
+
+    $currentEmpty.addClass('d-none');
+    $currentList.empty();
+
+    const map = {};
+    summaries.forEach(s => { if (s && s.id) map[s.id] = s; });
+
+    rawChildIds.forEach(function (cid) {
+      const s = map[cid];
+
+      const label = s
+        ? `${(s.brandName || '').toString()} ${(s.modelName || '').toString()}`.trim()
+        : '';
+
+      const display = label || cid;
+
+      const itemHtml = `
+        <div class="list-group-item d-flex justify-content-between align-items-center">
+          <div>
+            <div class="fw-semibold">${escapeHtml(display)}</div>
+            <div class="text-muted small">${escapeHtml(cid)}</div>
+          </div>
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-danger btn-unaggregate-child"
+            data-child-id="${escapeHtml(cid)}">
+            <i class="bx bx-unlink"></i> Remover
+          </button>
+        </div>
+      `;
+      $currentList.append(itemHtml);
+    });
+
+  });
+
+  $.ajax({
+    url: `/products/api/products/${parentId}/aggregation-candidates/`,
+    method: 'GET',
+    success: function (resp) {
+      if (!resp || resp.success === false || !Array.isArray(resp.data) || resp.data.length === 0) {
+        aggregateCandidatesAll = [];
+        aggregateCandidatesFiltered = [];
+        renderAggregateCandidates();
+        return;
+      }
+
+      aggregateCandidatesAll = resp.data.slice();
+      aggregateCandidatesFiltered = resp.data.slice();
+
+      $('#aggregateSearchInput').val('');
+      aggregateCandidatesPage = 1;
+      aggregateCandidatesPageSize = parseInt($('#aggregatePageSize').val(), 10) || 25;
+
+      renderAggregateCandidates();
+    },
+    error: function () {
+      if (typeof showBootstrapAlert === 'function') {
+        showBootstrapAlert(
+          'danger',
+          'Erro',
+          'Não foi possível carregar os passaportes disponíveis para agregação.'
+        );
+      }
+    }
+  });
+
+  aggregateModal.show();
+}
+
+function applyAggregateCandidatesFilter() {
+  const term = ($('#aggregateSearchInput').val() || '').trim().toLowerCase();
+
+  if (!term) {
+    aggregateCandidatesFiltered = aggregateCandidatesAll.slice();
+  } else {
+    aggregateCandidatesFiltered = aggregateCandidatesAll.filter(p => {
+      const pid = ((p._id && (p._id.$oid || p._id)) || p.id || '').toString().toLowerCase();
+      const brand = (p?.identification?.brandName || '').toString().toLowerCase();
+      const model = (p?.identification?.modelName || '').toString().toLowerCase();
+      return pid.includes(term) || brand.includes(term) || model.includes(term);
+    });
+  }
+
+  aggregateCandidatesPage = 1;
+  renderAggregateCandidates();
+}
+
+function renderAggregateCandidates() {
+  const $list = $('#aggregateCandidatesList');
+  const $empty = $('#aggregateCandidatesEmpty');
+  const $info = $('#aggregateCandidatesInfo');
+  const $pageLabel = $('#aggregatePageLabel');
+
+  const total = aggregateCandidatesFiltered.length;
+
+  if (!total) {
+    $list.empty();
+    $empty.removeClass('d-none');
+    $info.text('');
+    $pageLabel.text('1/1');
+    $('#aggregatePrevPage').prop('disabled', true);
+    $('#aggregateNextPage').prop('disabled', true);
+    return;
+  }
+
+  $empty.addClass('d-none');
+
+  const pageSize = aggregateCandidatesPageSize || 25;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  if (aggregateCandidatesPage > totalPages) aggregateCandidatesPage = totalPages;
+  if (aggregateCandidatesPage < 1) aggregateCandidatesPage = 1;
+
+  const start = (aggregateCandidatesPage - 1) * pageSize;
+  const end = Math.min(start + pageSize, total);
+
+  const slice = aggregateCandidatesFiltered.slice(start, end);
+
+  $list.empty();
+  slice.forEach(function (p) {
+    const pid = ((p._id && (p._id.$oid || p._id)) || p.id || '').toString();
+    const label = `${(p?.identification?.brandName || '').toString()} ${(p?.identification?.modelName || '').toString()}`.trim();
+    const display = label || pid;
+
+    $list.append(`
+      <button
+        type="button"
+        class="list-group-item list-group-item-action d-flex justify-content-between align-items-center btn-aggregate-select"
+        data-child-id="${pid}">
+        <div>
+          <div class="fw-semibold">${escapeHtml(display)}</div>
+          <div class="text-muted small">${escapeHtml(pid)}</div>
+        </div>
+        <i class="bx bx-plus-circle fs-5"></i>
+      </button>
+    `);
+  });
+
+  $info.text(`${start + 1}-${end} de ${total}`);
+  $pageLabel.text(`${aggregateCandidatesPage}/${totalPages}`);
+  $('#aggregatePrevPage').prop('disabled', aggregateCandidatesPage <= 1);
+  $('#aggregateNextPage').prop('disabled', aggregateCandidatesPage >= totalPages);
+}
+
+$(document).on('click', '.btn-open-aggregate', function () {
+  const parentId = $(this).data('product-id');
+  if (!parentId) return;
+  openAggregateModal(parentId);
+});
+
+$(document).on('click', '.btn-aggregate-select', function () {
+  if (!currentAggregateParentId) return;
+
+  const childId = $(this).data('child-id');
+  if (!childId) return;
+
+  $.ajax({
+    url: `/products/api/products/${currentAggregateParentId}/aggregate-child/`,
+    method: 'POST',
+    headers: {
+      'X-CSRFToken': getCookie('csrftoken'),
+    },
+    data: {
+      childId: childId,
+    },
+    success: function (resp) {
+      if (resp && resp.success === false) {
+        if (typeof showBootstrapAlert === 'function') {
+          showBootstrapAlert(
+            'warning',
+            'Não foi possível agregar',
+            resp.detail || 'Verifique as regras de agregação e tente novamente.'
+          );
+        }
+        return;
+      }
+
+      if (typeof showBootstrapAlert === 'function') {
+        showBootstrapAlert(
+          'success',
+          'Agregado',
+          'Passaporte agregado com sucesso.'
+        );
+      }
+
+      if (typeof loadProductsGrid === 'function') {
+        loadProductsGrid();
+      }
+      openAggregateModal(currentAggregateParentId);
+    },
+    error: function (xhr) {
+      let msg = 'Erro ao agregar o passaporte.';
+      try {
+        const r = xhr.responseJSON;
+        if (r && r.detail) msg = r.detail;
+      } catch (e) {}
+      if (typeof showBootstrapAlert === 'function') {
+        showBootstrapAlert('danger', 'Erro', msg);
+      }
+    },
+  });
+});
+
+$(document).on('click', '.btn-unaggregate-child', function () {
+  if (!currentAggregateParentId) return;
+
+  const childId = $(this).data('child-id');
+  if (!childId) return;
+
+  $.ajax({
+    url: `/products/api/products/${currentAggregateParentId}/unaggregate-child/`,
+    method: 'POST',
+    headers: {
+      'X-CSRFToken': getCookie('csrftoken'),
+    },
+    data: {
+      childId: childId,
+    },
+    success: function (resp) {
+      if (resp && resp.success === false) {
+        if (typeof showBootstrapAlert === 'function') {
+          showBootstrapAlert(
+            'danger',
+            'Erro',
+            resp.detail || 'Não foi possível desagregar o passaporte.'
+          );
+        }
+        return;
+      }
+
+      if (typeof showBootstrapAlert === 'function') {
+        showBootstrapAlert(
+          'success',
+          'Removido',
+          'Passaporte desagregado com sucesso.'
+        );
+      }
+
+      if (typeof loadProductsGrid === 'function') {
+        loadProductsGrid();
+      }
+      openAggregateModal(currentAggregateParentId);
+    },
+    error: function () {
+      if (typeof showBootstrapAlert === 'function') {
+        showBootstrapAlert(
+          'danger',
+          'Erro',
+          'Erro ao desagregar o passaporte.'
+        );
+      }
+    },
+  });
+});
+
+$(document).on('input', '#aggregateSearchInput', function () {
+  applyAggregateCandidatesFilter();
+});
+
+$(document).on('change', '#aggregatePageSize', function () {
+  aggregateCandidatesPageSize = parseInt($(this).val(), 10) || 25;
+  aggregateCandidatesPage = 1;
+  renderAggregateCandidates();
+});
+
+$(document).on('click', '#aggregatePrevPage', function () {
+  aggregateCandidatesPage--;
+  renderAggregateCandidates();
+});
+
+$(document).on('click', '#aggregateNextPage', function () {
+  aggregateCandidatesPage++;
+  renderAggregateCandidates();
+});
+
 $(document).off('click', '#usageEntrySaveBtn').on('click', '#usageEntrySaveBtn', function () {
   const kind = $('#usageEntryType').val();
   const idxStr = $('#usageEntryIndex').val();
@@ -2036,8 +2426,15 @@ $('#btnSubmitFormCommon').off('click').on('click', saveCommonModal);
 
 $(document).on('click', '.edit-product-btn', function () {
   const id = $(this).data('id');
-  const isAdmin = window.APP_CONTEXT?.isCompany === true || window.APP_CONTEXT?.isSuperuser === true;
-  if (isAdmin) {
+
+  const isSuperuser = window.APP_CONTEXT?.isSuperuser === true;
+  if (isSuperuser) {
+    openModal(id);
+    return;
+  }
+
+  const uid = (window.APP_CONTEXT?.userId || '').toString();
+  if (!uid) {
     openModal(id);
     return;
   }
@@ -2047,15 +2444,19 @@ $(document).on('click', '.edit-product-btn', function () {
       openModal(id);
       return;
     }
-    const ownerId = (data.ownerUserId || '').toString();
-    const uid = (window.APP_CONTEXT?.userId || '').toString();
-    if (uid && ownerId && uid === ownerId) {
-      openCommonModal(id);
-    } else {
+
+    const createdById = (data.createdById || '').toString();
+
+    if (createdById && createdById === uid) {
       openModal(id);
+      return;
     }
+
+    openCommonModal(id);
   });
 });
+
+
 
 $(document).ready(function () {
   initEvents();
