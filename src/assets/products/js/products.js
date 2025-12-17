@@ -13,6 +13,10 @@ let removeAttachmentIds = new Set();
 let aggregateModal = null;
 let currentAggregateParentId = null;
 const EDIT_FORM_SELECTOR = '#product-form';
+let aggregateCandidatesAll = [];
+let aggregateCandidatesFiltered = [];
+let aggregateCandidatesPage = 1;
+let aggregateCandidatesPageSize = 25;
 
 
 function lockAllEditFields() {
@@ -55,7 +59,6 @@ function fetchProducts(callback) {
       Accept: 'application/json'
     },
     success: function (response) {
-      console.log('🚀 ~ fetchProducts ~ response:', response);
       if (response.success) {
         if (callback) callback(response.data);
       } else {
@@ -191,7 +194,12 @@ function cardHtml(product) {
 
     const ownerId = (product.ownerUserId || '').toString();
 
-  const canAggregate = isSuperuser || (uid && createdById && uid === createdById) || (uid && ownerId && uid === ownerId);
+    const canAggregate = isSuperuser || (
+      uid && (
+        (ownerId && ownerId === uid) ||
+        (!ownerId && createdById === uid)
+      )
+    );
 
   const aggregateBtn = canAggregate
     ? `<button
@@ -1944,7 +1952,28 @@ function ensureAggregateModal() {
                           <hr class="my-2" />
 
                           <div>
-                            <h6 class="mb-1">Adicionar passaportes existentes</h6>
+                            <h6 class="mb-2">Adicionar passaportes existentes</h6>
+
+                            <div class="input-group input-group-sm mb-2">
+                              <span class="input-group-text"><i class="bx bx-search"></i></span>
+                              <input type="text" class="form-control" id="aggregateSearchInput"
+                                    placeholder="Buscar por marca, modelo ou ID...">
+                            </div>
+
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                              <div class="text-muted small" id="aggregateCandidatesInfo"></div>
+                              <div class="d-flex gap-2 align-items-center">
+                                <select class="form-select form-select-sm" id="aggregatePageSize" style="width: 88px;">
+                                  <option value="10">10</option>
+                                  <option value="25" selected>25</option>
+                                  <option value="50">50</option>
+                                </select>
+                                <button class="btn btn-sm btn-outline-secondary" id="aggregatePrevPage" type="button">&laquo;</button>
+                                <span class="small" id="aggregatePageLabel">1/1</span>
+                                <button class="btn btn-sm btn-outline-secondary" id="aggregateNextPage" type="button">&raquo;</button>
+                              </div>
+                            </div>
+
                             <div id="aggregateCandidatesEmpty" class="text-muted small d-none">
                               Nenhum passaporte disponível para agregação.
                             </div>
@@ -1979,6 +2008,16 @@ function openAggregateModal(parentId) {
   $candList.empty();
   $currentEmpty.removeClass('d-none');
   $candEmpty.addClass('d-none');
+  aggregateCandidatesAll = [];
+  aggregateCandidatesFiltered = [];
+  aggregateCandidatesPage = 1;
+  aggregateCandidatesPageSize = parseInt($('#aggregatePageSize').val(), 10) || 25;
+  $('#aggregateSearchInput').val('');
+  $('#aggregateCandidatesInfo').text('');
+  $('#aggregatePageLabel').text('1/1');
+  $('#aggregatePrevPage').prop('disabled', true);
+  $('#aggregateNextPage').prop('disabled', true);
+
 
   fetchProductById(parentId, function (data) {
     if (!data) {
@@ -1992,81 +2031,68 @@ function openAggregateModal(parentId) {
       return;
     }
 
-    const childIds = Array.isArray(data.childIds) ? data.childIds : [];
+    const summaries = Array.isArray(data.childSummaries) ? data.childSummaries : [];
+    const rawChildIds = Array.isArray(data.childIds) ? data.childIds : [];
 
-    if (childIds.length === 0) {
+    if (rawChildIds.length === 0) {
       $currentList.empty();
       $currentEmpty.removeClass('d-none');
-    } else {
-      $currentEmpty.addClass('d-none');
-      $currentList.empty();
-
-      childIds.forEach(function (cid) {
-        fetchProductById(cid, function (child) {
-          const label =
-            (child?.identification?.brandName || '') +
-            ' ' +
-            (child?.identification?.modelName || '');
-          const display = label.trim() || cid;
-
-          const itemHtml = `
-            <div class="list-group-item d-flex justify-content-between align-items-center">
-              <div>
-                <div class="fw-semibold">${display}</div>
-                <div class="text-muted small">${cid}</div>
-              </div>
-              <button
-                type="button"
-                class="btn btn-sm btn-outline-danger btn-unaggregate-child"
-                data-child-id="${cid}">
-                <i class="bx bx-unlink"></i> Remover
-              </button>
-            </div>
-          `;
-          $currentList.append(itemHtml);
-        });
-      });
+      return;
     }
+
+    $currentEmpty.addClass('d-none');
+    $currentList.empty();
+
+    const map = {};
+    summaries.forEach(s => { if (s && s.id) map[s.id] = s; });
+
+    rawChildIds.forEach(function (cid) {
+      const s = map[cid];
+
+      const label = s
+        ? `${(s.brandName || '').toString()} ${(s.modelName || '').toString()}`.trim()
+        : '';
+
+      const display = label || cid;
+
+      const itemHtml = `
+        <div class="list-group-item d-flex justify-content-between align-items-center">
+          <div>
+            <div class="fw-semibold">${escapeHtml(display)}</div>
+            <div class="text-muted small">${escapeHtml(cid)}</div>
+          </div>
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-danger btn-unaggregate-child"
+            data-child-id="${escapeHtml(cid)}">
+            <i class="bx bx-unlink"></i> Remover
+          </button>
+        </div>
+      `;
+      $currentList.append(itemHtml);
+    });
+
   });
 
   $.ajax({
     url: `/products/api/products/${parentId}/aggregation-candidates/`,
     method: 'GET',
     success: function (resp) {
-      $candList.empty();
       if (!resp || resp.success === false || !Array.isArray(resp.data) || resp.data.length === 0) {
-        $candEmpty.removeClass('d-none');
+        aggregateCandidatesAll = [];
+        aggregateCandidatesFiltered = [];
+        renderAggregateCandidates();
         return;
       }
 
-      $candEmpty.addClass('d-none');
+      aggregateCandidatesAll = resp.data.slice();
+      aggregateCandidatesFiltered = resp.data.slice();
 
-      resp.data.forEach(function (p) {
-        const pid =
-          (p._id && (p._id.$oid || p._id)) ||
-          p.id ||
-          '';
+      $('#aggregateSearchInput').val('');
+      aggregateCandidatesPage = 1;
+      aggregateCandidatesPageSize = parseInt($('#aggregatePageSize').val(), 10) || 25;
 
-        const label =
-          (p?.identification?.brandName || '') +
-          ' ' +
-          (p?.identification?.modelName || '');
-        const display = label.trim() || pid;
-
-        const itemHtml = `
-          <button
-            type="button"
-            class="list-group-item list-group-item-action d-flex justify-content-between align-items-center btn-aggregate-select"
-            data-child-id="${pid}">
-            <div>
-              <div class="fw-semibold">${display}</div>
-              <div class="text-muted small">${pid}</div>
-            </div>
-            <i class="bx bx-plus-circle fs-5"></i>
-          </button>
-        `;
-        $candList.append(itemHtml);
-      });
+      renderAggregateCandidates();
     },
     error: function () {
       if (typeof showBootstrapAlert === 'function') {
@@ -2080,6 +2106,81 @@ function openAggregateModal(parentId) {
   });
 
   aggregateModal.show();
+}
+
+function applyAggregateCandidatesFilter() {
+  const term = ($('#aggregateSearchInput').val() || '').trim().toLowerCase();
+
+  if (!term) {
+    aggregateCandidatesFiltered = aggregateCandidatesAll.slice();
+  } else {
+    aggregateCandidatesFiltered = aggregateCandidatesAll.filter(p => {
+      const pid = ((p._id && (p._id.$oid || p._id)) || p.id || '').toString().toLowerCase();
+      const brand = (p?.identification?.brandName || '').toString().toLowerCase();
+      const model = (p?.identification?.modelName || '').toString().toLowerCase();
+      return pid.includes(term) || brand.includes(term) || model.includes(term);
+    });
+  }
+
+  aggregateCandidatesPage = 1;
+  renderAggregateCandidates();
+}
+
+function renderAggregateCandidates() {
+  const $list = $('#aggregateCandidatesList');
+  const $empty = $('#aggregateCandidatesEmpty');
+  const $info = $('#aggregateCandidatesInfo');
+  const $pageLabel = $('#aggregatePageLabel');
+
+  const total = aggregateCandidatesFiltered.length;
+
+  if (!total) {
+    $list.empty();
+    $empty.removeClass('d-none');
+    $info.text('');
+    $pageLabel.text('1/1');
+    $('#aggregatePrevPage').prop('disabled', true);
+    $('#aggregateNextPage').prop('disabled', true);
+    return;
+  }
+
+  $empty.addClass('d-none');
+
+  const pageSize = aggregateCandidatesPageSize || 25;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  if (aggregateCandidatesPage > totalPages) aggregateCandidatesPage = totalPages;
+  if (aggregateCandidatesPage < 1) aggregateCandidatesPage = 1;
+
+  const start = (aggregateCandidatesPage - 1) * pageSize;
+  const end = Math.min(start + pageSize, total);
+
+  const slice = aggregateCandidatesFiltered.slice(start, end);
+
+  $list.empty();
+  slice.forEach(function (p) {
+    const pid = ((p._id && (p._id.$oid || p._id)) || p.id || '').toString();
+    const label = `${(p?.identification?.brandName || '').toString()} ${(p?.identification?.modelName || '').toString()}`.trim();
+    const display = label || pid;
+
+    $list.append(`
+      <button
+        type="button"
+        class="list-group-item list-group-item-action d-flex justify-content-between align-items-center btn-aggregate-select"
+        data-child-id="${pid}">
+        <div>
+          <div class="fw-semibold">${escapeHtml(display)}</div>
+          <div class="text-muted small">${escapeHtml(pid)}</div>
+        </div>
+        <i class="bx bx-plus-circle fs-5"></i>
+      </button>
+    `);
+  });
+
+  $info.text(`${start + 1}-${end} de ${total}`);
+  $pageLabel.text(`${aggregateCandidatesPage}/${totalPages}`);
+  $('#aggregatePrevPage').prop('disabled', aggregateCandidatesPage <= 1);
+  $('#aggregateNextPage').prop('disabled', aggregateCandidatesPage >= totalPages);
 }
 
 $(document).on('click', '.btn-open-aggregate', function () {
@@ -2107,9 +2208,9 @@ $(document).on('click', '.btn-aggregate-select', function () {
       if (resp && resp.success === false) {
         if (typeof showBootstrapAlert === 'function') {
           showBootstrapAlert(
-            'danger',
-            'Erro',
-            resp.detail || 'Não foi possível agregar o passaporte.'
+            'warning',
+            'Não foi possível agregar',
+            resp.detail || 'Verifique as regras de agregação e tente novamente.'
           );
         }
         return;
@@ -2128,13 +2229,14 @@ $(document).on('click', '.btn-aggregate-select', function () {
       }
       openAggregateModal(currentAggregateParentId);
     },
-    error: function () {
+    error: function (xhr) {
+      let msg = 'Erro ao agregar o passaporte.';
+      try {
+        const r = xhr.responseJSON;
+        if (r && r.detail) msg = r.detail;
+      } catch (e) {}
       if (typeof showBootstrapAlert === 'function') {
-        showBootstrapAlert(
-          'danger',
-          'Erro',
-          'Erro ao agregar o passaporte.'
-        );
+        showBootstrapAlert('danger', 'Erro', msg);
       }
     },
   });
@@ -2192,6 +2294,25 @@ $(document).on('click', '.btn-unaggregate-child', function () {
   });
 });
 
+$(document).on('input', '#aggregateSearchInput', function () {
+  applyAggregateCandidatesFilter();
+});
+
+$(document).on('change', '#aggregatePageSize', function () {
+  aggregateCandidatesPageSize = parseInt($(this).val(), 10) || 25;
+  aggregateCandidatesPage = 1;
+  renderAggregateCandidates();
+});
+
+$(document).on('click', '#aggregatePrevPage', function () {
+  aggregateCandidatesPage--;
+  renderAggregateCandidates();
+});
+
+$(document).on('click', '#aggregateNextPage', function () {
+  aggregateCandidatesPage++;
+  renderAggregateCandidates();
+});
 
 $(document).off('click', '#usageEntrySaveBtn').on('click', '#usageEntrySaveBtn', function () {
   const kind = $('#usageEntryType').val();
@@ -2305,9 +2426,14 @@ $('#btnSubmitFormCommon').off('click').on('click', saveCommonModal);
 
 $(document).on('click', '.edit-product-btn', function () {
   const id = $(this).data('id');
-  const uid = (window.APP_CONTEXT?.userId || '').toString();
-  const isSuperuser = window.APP_CONTEXT?.isSuperuser === true;
 
+  const isSuperuser = window.APP_CONTEXT?.isSuperuser === true;
+  if (isSuperuser) {
+    openModal(id);
+    return;
+  }
+
+  const uid = (window.APP_CONTEXT?.userId || '').toString();
   if (!uid) {
     openModal(id);
     return;
@@ -2320,23 +2446,17 @@ $(document).on('click', '.edit-product-btn', function () {
     }
 
     const createdById = (data.createdById || '').toString();
-    const ownerId = (data.ownerUserId || '').toString();
 
-    if (isSuperuser || (createdById && createdById === uid)) {
+    if (createdById && createdById === uid) {
       openModal(id);
-    } else if (ownerId && ownerId === uid) {
-      openCommonModal(id);
-    } else {
-      if (typeof showBootstrapAlert === 'function') {
-        showBootstrapAlert(
-          'danger',
-          'Sem acesso',
-          'Você não tem permissão para editar este passaporte.'
-        );
-      }
+      return;
     }
+
+    openCommonModal(id);
   });
 });
+
+
 
 $(document).ready(function () {
   initEvents();

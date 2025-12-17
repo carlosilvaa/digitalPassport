@@ -154,7 +154,6 @@ def _inject_usage_attachment_urls(request, product, data):
                     base + att['attachmentId'] + "/"
                 )
 
-
 def _now_utc():
     return datetime.now(timezone.utc)
 
@@ -264,7 +263,6 @@ def render_custom_fields(fields_config, title=None, icon=None):
     html.append('</div>')
     return mark_safe(''.join(html))
 
-
 def _get_actor_info(uid: str):
     if not uid:
         return None, "Unknown"
@@ -286,6 +284,30 @@ def _get_actor_info(uid: str):
         return str(user.id), name
     except Exception:
         return str(uid), f"User {uid}"
+
+def _child_summaries_for_aggregate(profile, parent_product, child_ids):
+    if not child_ids:
+        return []
+
+    # Se não pode agregar nesse pai, não devolvemos summaries
+    if not _can_aggregate(profile, parent_product):
+        return []
+
+    # Busca em lote — só precisamos do identification
+    children = list(Products.objects(id__in=child_ids).only("id", "identification"))
+
+    out = []
+    for c in children:
+        ident = getattr(c, "identification", None)
+        out.append({
+            "id": str(c.id),
+            "brandName": getattr(ident, "brandName", None),
+            "modelName": getattr(ident, "modelName", None),
+            "isActive": getattr(ident, "isActive", None),
+        })
+
+    return out
+
 
 # ---------------- Views ----------------
 
@@ -436,6 +458,10 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
                 data['manualFileName'] = getattr(product.manualFile, "filename", None) or "manual.pdf"
 
             _inject_usage_attachment_urls(request, product, data)
+            
+            child_ids = list(getattr(product, "childIds", []) or [])
+            data["childSummaries"] = _child_summaries_for_aggregate(profile, product, child_ids)
+
 
             return Response(data, status=status.HTTP_200_OK)
 
@@ -1211,58 +1237,80 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
         uid = _get_current_user_id(request)
         profile = _get_profile(uid)
         if not uid or not profile:
-            return Response({"success": False, "detail": "Não autenticado."},
+            return Response({"success": False, "detail": "Você precisa estar autenticado para realizar esta ação."},
                             status=status.HTTP_401_UNAUTHORIZED)
 
         try:
             parent = Products.objects.get(id=pk)
         except Products.DoesNotExist:
-            return Response({"success": False, "detail": "Passaporte pai não encontrado."},
+            return Response({"success": False, "detail": "Passaporte principal não encontrado."},
                             status=status.HTTP_404_NOT_FOUND)
 
         if not _can_aggregate(profile, parent):
-            return Response({"success": False, "detail": "Sem permissão para agregar neste passaporte."},
+            return Response({"success": False, "detail": "Você não tem permissão para gerenciar agregações neste passaporte."},
                             status=status.HTTP_403_FORBIDDEN)
 
-        # Pai não pode ser filho de outro
         if getattr(parent, "parentId", None):
             return Response(
-                {"success": False, "detail": "Não é possível agregar itens a um passaporte que já é filho de outro."},
+                {"success": False,
+                "detail": "Este passaporte já está agregado a outro. "
+                        "Desagregue-o do passaporte principal antes de adicionar outros nele."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         payload = request.data or {}
         child_id = (payload.get("childId") or payload.get("child_id") or "").strip()
         if not child_id:
-            return Response({"success": False, "detail": "Informe o ID do passaporte a agregar (childId)."},
+            return Response({"success": False, "detail": "Selecione um passaporte para agregar."},
                             status=status.HTTP_400_BAD_REQUEST)
 
         if child_id == str(parent.id):
-            return Response({"success": False, "detail": "Um passaporte não pode ser agregado a si próprio."},
+            return Response({"success": False, "detail": "Você não pode agregar um passaporte nele mesmo."},
                             status=status.HTTP_400_BAD_REQUEST)
 
         try:
             child = Products.objects.get(id=child_id)
         except Products.DoesNotExist:
-            return Response({"success": False, "detail": "Passaporte filho não encontrado."},
+            return Response({"success": False, "detail": "Passaporte (filho) não encontrado."},
                             status=status.HTTP_404_NOT_FOUND)
 
         # user precisa poder ver o filho também
         if not _can_view(profile, child):
-            return Response({"success": False, "detail": "Sem permissão para usar este passaporte como filho."},
+            return Response({"success": False, "detail": "Você não pode selecionar este passaporte como filho."},
                             status=status.HTTP_403_FORBIDDEN)
 
-        # Filho precisa estar livre
+        # Filho precisa estar livre (mantém regra)
         if getattr(child, "parentId", None):
-            return Response({"success": False, "detail": "Este passaporte já está agregado a outro passaporte."},
+            return Response({"success": False,
+                            "detail": "Este passaporte já está agregado a outro. "
+                                    "Desagregue-o antes de agregá-lo aqui."},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        # se por algum motivo um filho tiver childIds, não deixamos virar pai de outro nível
-        if getattr(child, "childIds", []):
-            return Response({"success": False, "detail": "Este passaporte já é pai de outros e não pode ser agregado."},
-                            status=status.HTTP_400_BAD_REQUEST)
+        #Anti-ciclo (não pode agregar se o parent estiver dentro dos descendentes do child)
+        def _descendants_ids(root_id: str):
+            seen = set()
+            queue = [root_id]
+            while queue:
+                nid = queue.pop(0)
+                if nid in seen:
+                    continue
+                seen.add(nid)
+                node = Products.objects(id=nid).only("childIds").first()
+                if not node:
+                    continue
+                for c in (node.childIds or []):
+                    if c and str(c) not in seen:
+                        queue.append(str(c))
+            return seen
 
-        # -------- AUDITORIA: snapshots antes --------
+        if str(parent.id) in _descendants_ids(str(child.id)):
+            return Response(
+                {"success": False,
+                "detail": "Agregação inválida: isso criaria um ciclo (um passaporte não pode virar filho de um descendente)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # AUDITORIA: snapshots antes
         parent_before = parent.to_mongo().to_dict()
         child_before = child.to_mongo().to_dict()
 
@@ -1275,9 +1323,10 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
         if cid not in parent.childIds:
             parent.childIds.append(cid)
 
+        # Define vínculo
         child.parentId = str(parent.id)
 
-        # Metadata de auditoria simples
+        # Metadata
         parent.updatedById = str(uid)
         parent.updatedAt = _now_utc()
         child.updatedById = str(uid)
@@ -1286,13 +1335,11 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
         child.save()
         parent.save()
 
-        # -------- AUDITORIA: snapshots depois --------
+        #AUDITORIA: snapshots depois
         parent_after = parent.to_mongo().to_dict()
         child_after = child.to_mongo().to_dict()
         actor_id, actor_name = _get_actor_info(uid)
 
-
-        # log no PAI
         log_product_audit(
             instance=parent,
             event_type="update",
@@ -1308,7 +1355,6 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
             notes=f"Agregado filho {child.id} ao pai {parent.id}",
         )
 
-        # log no FILHO
         log_product_audit(
             instance=child,
             event_type="update",
@@ -1334,6 +1380,7 @@ class ProductsViewSet(LoginRequiredMixin, TemplateView, viewsets.ViewSet):
             },
             status=status.HTTP_200_OK,
         )
+
 
     @action(detail=True, methods=['post'], url_path='unaggregate-child')
     def unaggregate_child(self, request, pk=None):
